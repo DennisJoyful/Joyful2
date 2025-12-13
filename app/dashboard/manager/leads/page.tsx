@@ -1,12 +1,12 @@
 // app/dashboard/manager/leads/page.tsx
 import { getAdminClient } from '@/lib/supabase/admin'
-import LeadsTable from '@/components/leads/LeadsTable'
+import LeadsTable, { LeadRow } from '@/components/leads/LeadsTable'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-export type Lead = {
+type Lead = {
   id: string
   handle?: string | null
   status?: string | null
@@ -36,7 +36,20 @@ async function fetchLeads(): Promise<Lead[]> {
 }
 
 export default async function ManagerLeadsPage() {
-  const rows = await fetchLeads()
+  const raw = await fetchLeads()
+  const rows: LeadRow[] = raw.map(r => ({
+    id: r.id,
+    handle: r.handle ?? null,
+    status: r.status ?? null,
+    source: r.source ?? null,
+    notes: r.notes ?? null,
+    utm: r.utm ?? null,
+    extras: r.extras ?? null,
+    created_at: r.created_at ?? null,
+    follow_up_at: r.follow_up_at ?? null,
+    follow_up_date: r.follow_up_date ?? null,
+  }))
+
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">

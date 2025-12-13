@@ -4,7 +4,7 @@ import React from 'react';
 
 export type LeadRow = {
   id: string;
-  handle: string | null;
+  handle?: string | null | undefined;
   status?: string | null;
   source?: string | null;
   notes?: string | null;
