@@ -6,27 +6,26 @@ export const dynamic = 'force-dynamic'
 
 export async function GET() {
   const sb = getAdminClient()
-  // Your schema: column name is 'source' (type: lead_source). Read exactly that.
-  const selects = [
-    'id, source, notes, utm, extras',
-    'id, source, notes, utm',
-    'id, source',
+  // Try full extra set first; progressively degrade if schema/roles differ
+  const tries = [
+    'id, lead_source, source, notes, utm, extras',
+    'id, lead_source, source, notes, utm',
+    'id, lead_source, source',
   ]
-  for (const sel of selects) {
+  for (const sel of tries) {
     const { data, error } = await sb.from('leads').select(sel).is('archived_at', null)
-    if (!error && Array.isArray(data)) {
-      return NextResponse.json(
-        data.map((r: any) => ({
-          id: r.id,
-          source: r.source ?? null,
-          notes: r.notes ?? null,
-          utm: r.utm ?? null,
-          extras: r.extras ?? null,
-        })),
-        { status: 200 }
-      )
+    if (!error && data) {
+      // coalesce lead_source/source into `source` for client
+      const out = data.map((r:any) => ({
+        id: r.id,
+        source: r.lead_source ?? r.source ?? null,
+        notes: r.notes ?? null,
+        utm: r.utm ?? null,
+        extras: r.extras ?? null,
+      }))
+      return NextResponse.json(out, { status: 200 })
     }
   }
-  // Non-fatal: return empty extras
+  // If everything fails, return empty extras but do not break UI
   return NextResponse.json([], { status: 200 })
 }
