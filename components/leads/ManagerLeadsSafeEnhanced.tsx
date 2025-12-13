@@ -18,7 +18,7 @@ export type BaseLead = {
 
 export type ExtraLead = {
   id: string
-  source?: string | null   // coalesced lead_source/source
+  source?: string | null   // from column 'source' (type: lead_source)
   notes?: any | null
   utm?: any | null
   extras?: any | null
@@ -45,7 +45,7 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
   const [follow, setFollow] = React.useState<string>('');
   const [sort, setSort] = React.useState<string>('created_at_desc');
 
-  // fetch extra info best-effort
+  // fetch extra info best-effort (reads 'source' column)
   React.useEffect(() => {
     let alive = true;
     (async () => {

@@ -1,4 +1,4 @@
-// app/api/manager/leads/route.ts (PATCH only the POST payload: write lead_source instead of source)
+// app/api/manager/leads/route.ts (ensure inserts use 'source')
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
 
     const payload: any = {
       handle,
-      lead_source: 'manual', // <-- write to lead_source (enum)
+      source: 'manual', // write into column 'source' (type: lead_source)
       status: 'new',
       contact_date,
       manager_id: managerId,
