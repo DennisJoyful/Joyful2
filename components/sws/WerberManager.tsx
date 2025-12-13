@@ -52,6 +52,34 @@ function normSlug(v: string){
     .slice(0, 40);
 }
 
+async function tryCreate(payloads: any[], endpoints: string[]): Promise<{ok:boolean, msg?:string}>{
+  for (const ep of endpoints) {
+    for (const p of payloads) {
+      try {
+        const res = await fetch(ep, {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify(p),
+        });
+        if (res.ok) return { ok:true };
+        // try to read server error
+        try {
+          const js = await res.json();
+          if (js?.error) return { ok:false, msg: String(js.error) };
+        } catch {
+          try {
+            const tx = await res.text();
+            if (tx) return { ok:false, msg: tx.slice(0,200) };
+          } catch {}
+        }
+      } catch (e:any) {
+        // continue trying other combos
+      }
+    }
+  }
+  return { ok:false, msg:'Unbekannter Fehler (Route oder Payload nicht akzeptiert).' };
+}
+
 export default function WerberManager(){
   const [list, setList] = React.useState<Werber[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -61,7 +89,7 @@ export default function WerberManager(){
   // create inputs
   const [newName, setNewName] = React.useState('');
   const [newSlug, setNewSlug] = React.useState('');
-  const [newPin, setNewPin] = React.useState(''); // optional: falls Backend 'passcode' erwartet
+  const [newPin, setNewPin] = React.useState('');
 
   async function refresh(){
     setLoading(true);
@@ -79,35 +107,38 @@ export default function WerberManager(){
 
   async function create(){
     setError('');
-    try{
-      const slug = normSlug(newSlug || newName || 'werber');
-      const payload: any = { slug, name: newName || undefined };
-      if (newPin.trim()) payload.passcode = newPin.trim(); // kompatibel zu create/route.ts
+    const slug = normSlug(newSlug || newName || 'werber');
+    const pin = newPin.trim();
 
-      // send to canonical endpoint first
-      let res = await fetch('/api/werber/create', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) {
-        // fallback variant
-        res = await fetch('/api/werber/create/route', {
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body: JSON.stringify(payload)
-        });
-      }
-      if (!res.ok) {
-        let msg = 'Werber konnte nicht angelegt werden.';
-        try { const j = await res.json(); if (j?.error) msg = j.error; } catch {}
-        throw new Error(msg);
+    // Build multiple payload variants to maximize compatibility
+    const payloads: any[] = [
+      { slug, passcode: pin || undefined, name: newName || undefined },
+      { code: slug, passcode: pin || undefined, name: newName || undefined },
+      { slug, code: slug, passcode: pin || undefined, name: newName || undefined },
+      { slug },
+      { code: slug },
+    ];
+
+    const endpoints = [
+      '/api/werber/create',
+      '/api/werber/create/route',
+      '/api/sws/werber/create',
+      '/api/sws/werber/create/route',
+    ];
+
+    try{
+      const result = await tryCreate(payloads, endpoints);
+      if (!result.ok) {
+        setError(result.msg || 'Werber konnte nicht angelegt werden.');
+        return;
       }
       setNewName('');
       setNewSlug('');
       setNewPin('');
       await refresh();
-    }catch(e:any){ setError(String(e.message || e)); }
+    }catch(e:any){
+      setError(String(e.message || e));
+    }
   }
 
   async function setPin(id:string){
@@ -141,7 +172,7 @@ export default function WerberManager(){
         <button className="px-3 py-2 border rounded" onClick={refresh}>Aktualisieren</button>
       </div>
 
-      {error && <div className="text-red-600 text-sm">{error}</div>}
+      {error && <div className="text-red-600 text-sm whitespace-pre-wrap">{error}</div>}
 
       <Section title="Werber anlegen">
         <div className="flex flex-wrap items-center gap-2">
@@ -160,7 +191,7 @@ export default function WerberManager(){
           />
           <input
             className="border rounded px-3 py-2 text-sm"
-            placeholder="PIN (optional, sonst random)"
+            placeholder="PIN (optional)"
             value={newPin}
             onChange={e=>setNewPin(e.target.value)}
           />
