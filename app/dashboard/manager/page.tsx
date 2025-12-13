@@ -1,15 +1,13 @@
-// app/dashboard/manager/page.tsx (SAFE MERGE: old query + optional lead_source)
+// app/dashboard/manager/page.tsx
 import { getAdminClient } from '@/lib/supabase/admin'
-import LeadActions from '@/components/leads/LeadActions'
-import LeadStatusSelect from '@/components/leads/LeadStatusSelect'
+import ManagerLeadsEnhanced, { LeadRow } from '@/components/leads/ManagerLeadsEnhanced'
 import Link from 'next/link'
-import LeadLiveBadge from '@/components/LeadLiveBadge'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-type Lead = {
+type DbLead = {
   id: string
   handle?: string | null
   status?: string | null
@@ -17,97 +15,56 @@ type Lead = {
   follow_up_date?: string | null
   created_at?: string | null
   archived_at?: string | null
+  // optional fields
+  lead_source?: string | null
+  notes?: any | null
+  utm?: any | null
+  extras?: any | null
 }
 
-type LeadWithSource = Lead & { lead_source?: 'manual' | 'sws' | 'admin' | 'manager' | null }
-
-async function fetchLegacy(): Promise<Lead[]> {
-  const supabase = getAdminClient()
-  const { data, error } = await supabase
-    .from('leads')
-    .select('id, handle, status, follow_up_at, follow_up_date, created_at, archived_at')
-    .is('archived_at', null)
-    .order('created_at', { ascending: false })
-  if (error) {
-    console.error('Failed to fetch leads (legacy)', error)
-    return []
-  }
-  return data || []
-}
-
-async function fetchLeadSources(): Promise<Record<string, LeadWithSource['lead_source']>> {
-  const supabase = getAdminClient()
+async function fetchLeads(): Promise<DbLead[]> {
+  const sb = getAdminClient()
+  // Try extended select first; if it fails, fall back to legacy select
   try {
-    const { data, error } = await supabase
+    const { data, error } = await sb
       .from('leads')
-      .select('id, lead_source')
+      .select('id, handle, status, follow_up_at, follow_up_date, created_at, archived_at, lead_source, notes, utm, extras')
       .is('archived_at', null)
+      .order('created_at', { ascending: false })
     if (error) throw error
-    const map: Record<string, LeadWithSource['lead_source']> = {}
-    for (const row of (data || []) as any[]) {
-      map[row.id] = row.lead_source ?? null
-    }
-    return map
-  } catch (e) {
-    console.warn('lead_source fetch skipped:', e)
-    return {}
+    return data || []
+  } catch {
+    const { data } = await sb
+      .from('leads')
+      .select('id, handle, status, follow_up_at, follow_up_date, created_at, archived_at')
+      .is('archived_at', null)
+      .order('created_at', { ascending: false })
+    return data || []
   }
 }
 
-function SourceBadge({ s }: { s: LeadWithSource['lead_source'] }){
-  const label = s ?? '—'
-  return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-gray-100 border">{label}</span>
-}
-
-export default async function ManagerLeadsPage() {
-  const [legacy, sourceMap] = await Promise.all([fetchLegacy(), fetchLeadSources()])
-  const leads: LeadWithSource[] = legacy.map(l => ({ ...l, lead_source: sourceMap[l.id] ?? null }))
+export default async function ManagerPage() {
+  const dbRows = await fetchLeads()
+  const rows: LeadRow[] = (dbRows || []).map(l => ({
+    id: l.id,
+    handle: l.handle ?? null,
+    status: l.status ?? null,
+    source: (l as any).lead_source ?? null, // map enum to UI "Quelle"
+    notes: (l as any).notes ?? null,
+    utm: (l as any).utm ?? null,
+    extras: (l as any).extras ?? null,
+    created_at: l.created_at ?? null,
+    follow_up_at: l.follow_up_at ?? null,
+    follow_up_date: l.follow_up_date ?? null,
+  }))
 
   return (
-    <div className="p-4 md:p-6">
-      <div className="flex items-center justify-between mb-3">
+    <div className="p-4 md:p-6 space-y-4">
+      <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Leads</h1>
         <Link className="text-sm text-blue-600 hover:underline" href="/dashboard/manager/leads/create">Lead anlegen</Link>
       </div>
-
-      {leads.length === 0 ? (
-        <div className="text-gray-500">Keine Leads gefunden.</div>
-      ) : (
-        <div className="overflow-auto rounded border">
-          <table className="min-w-[1000px] w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 text-gray-700">
-                <th className="px-3 py-2 text-left">Handle</th>
-                <th className="px-3 py-2 text-left">Live</th>
-                <th className="px-3 py-2 text-left">Lead-Status</th>
-                <th className="px-3 py-2 text-left">Quelle</th>
-                <th className="px-3 py-2 text-left">Follow‑Up (Date)</th>
-                <th className="px-3 py-2 text-left">Follow‑Up (At)</th>
-                <th className="px-3 py-2 text-left">Aktionen</th>
-              </tr>
-            </thead>
-            <tbody>
-              {leads.map((l) => (
-                <tr key={l.id} className="odd:bg-white even:bg-gray-50">
-                  <td className="px-3 py-2">
-                    {l.handle ? (
-                      <a className="text-blue-600 hover:underline" href={`https://www.tiktok.com/@${l.handle}`} target="_blank" rel="noreferrer">
-                        @{l.handle}
-                      </a>
-                    ) : '—'}
-                  </td>
-                  <td className="px-3 py-2"><LeadLiveBadge handle={l.handle ?? ''} /></td>
-                  <td className="px-3 py-2"><LeadStatusSelect id={l.id} value={l.status ?? 'new'} /></td>
-                  <td className="px-3 py-2"><SourceBadge s={l.lead_source ?? null} /></td>
-                  <td className="px-3 py-2">{l.follow_up_date || '—'}</td>
-                  <td className="px-3 py-2">{l.follow_up_at ? new Date(l.follow_up_at).toLocaleString() : '—'}</td>
-                  <td className="px-3 py-2"><LeadActions id={l.id} compact /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <ManagerLeadsEnhanced rows={rows} />
     </div>
   )
 }

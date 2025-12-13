@@ -10,8 +10,8 @@ export type LeadRow = {
   id: string;
   handle: string | null;
   status?: string | null;
-  source?: string | null;
-  notes?: string | null;
+  source?: string | null;  // maps from lead_source
+  notes?: any | null;
   utm?: any | null;
   extras?: any | null;
   created_at?: string | null;
@@ -45,7 +45,7 @@ export default function ManagerLeadsEnhanced({ rows }: Props) {
   })), [rows]);
 
   const filtered = React.useMemo(() => normalized.filter(r => {
-    const text = `${r.handle} ${r.status} ${r.source} ${r.notes ?? ''} ${JSON.stringify(r.utm ?? '')} ${JSON.stringify(r.extras ?? '')}`.toLowerCase();
+    const text = `${r.handle} ${r.status} ${r.source} ${JSON.stringify(r.notes ?? '')} ${JSON.stringify(r.utm ?? '')} ${JSON.stringify(r.extras ?? '')}`.toLowerCase();
     const okQ = q ? text.includes(q.toLowerCase()) : true;
     const okStatus = status ? (r.status || '').toLowerCase() === status.toLowerCase() : true;
     const okSource = source ? (r.source || '').toLowerCase() === source.toLowerCase() : true;
@@ -73,7 +73,6 @@ export default function ManagerLeadsEnhanced({ rows }: Props) {
     if (sort === 'status') return arr.sort((a,b)=>cmp(String(a.status), String(b.status)));
     if (sort === 'source') return arr.sort((a,b)=>cmp(String(a.source), String(b.source)));
     if (sort === 'follow') return arr.sort((a,b)=>cmp(a.follow_up_at || a.follow_up_date || '', b.follow_up_at || b.follow_up_date || ''));
-    // default created_at desc
     return arr.sort((a,b)=>cmp(a.created_at || '', b.created_at || '')).reverse();
   }, [filtered, sort]);
 
