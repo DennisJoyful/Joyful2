@@ -3,8 +3,7 @@
 import React from 'react';
 
 type Werber = { id: string; slug?: string|null; name?: string|null; status?: string|null; pin_set?: boolean|null };
-
-type ListResp = { items: Werber[] } | Werber[] | { error?: string };
+type ListShape = { items?: Werber[] } | Werber[] | { data?: Werber[] } | { rows?: Werber[] } | { error?: string };
 
 function normSlug(v: string){
   return v.toLowerCase().trim().replace(/[^a-z0-9-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40);
@@ -17,6 +16,28 @@ async function readErrorMessage(res: Response): Promise<string> {
     try { const js = JSON.parse(txt); if (js?.error) return String(js.error); } catch {}
     return txt.slice(0,300);
   } catch { return `${res.status} ${res.statusText}`; }
+}
+
+async function fetchList(): Promise<Werber[]> {
+  // try primary route
+  try {
+    const res = await fetch('/api/werber/list?t=' + Date.now(), { cache:'no-store', credentials:'include' });
+    if (res.ok) {
+      const data: ListShape = await res.json();
+      const items = Array.isArray(data) ? data : (data.items || (data as any).data || (data as any).rows || []);
+      if (Array.isArray(items) && items.length) return items as Werber[];
+    }
+  } catch {}
+  // fallback route (service-role): list2
+  try {
+    const res = await fetch('/api/werber/list2?t=' + Date.now(), { cache:'no-store', credentials:'include' });
+    if (res.ok) {
+      const data: ListShape = await res.json();
+      const items = Array.isArray(data) ? data : (data.items || (data as any).data || (data as any).rows || []);
+      return (items as Werber[]) || [];
+    }
+  } catch {}
+  return [];
 }
 
 export default function WerberManager(){
@@ -32,9 +53,7 @@ export default function WerberManager(){
   async function refresh(){
     setLoading(true); setError('');
     try{
-      const res = await fetch('/api/werber/list', { cache:'no-store', credentials:'include' });
-      const data: ListResp = await res.json();
-      const items = Array.isArray(data) ? data : (data as any).items;
+      const items = await fetchList();
       setList(items || []);
     }catch(e:any){ setError(String(e)); }
     setLoading(false);
@@ -53,8 +72,8 @@ export default function WerberManager(){
       if (!res.ok) { setError(await readErrorMessage(res)); return; }
       setNewSlug(''); setNewName('');
       await refresh();
-      // after create, if PIN provided, try to set
       if (newPin.trim()) {
+        // find freshly created
         const created = (list || []).find(w => (w.slug === slug));
         const id = created?.id;
         if (id) {
@@ -103,28 +122,30 @@ export default function WerberManager(){
             value={newPin} onChange={e=>setNewPin(e.target.value)} />
           <button className="px-3 py-2 border rounded" onClick={create}>Anlegen</button>
         </div>
-        <div className="text-xs opacity-70">Slug: a–z, 0–9, „-“; max 40. PIN wird als Hash gespeichert.</div>
+        <div className="text-xs opacity-70">Slug: a–z, 0–9, „-“; max 40.</div>
       </div>
 
       <div className="rounded-2xl border p-4">
         <div className="font-medium mb-2">Werber-Liste</div>
         {loading ? <div>Lade…</div> : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {list.map(w => (
-              <div key={w.id} className="rounded-xl border p-4 space-y-3">
-                <div>
-                  <div className="font-medium">{w.name || '—'}</div>
-                  <div className="text-xs opacity-70">Slug: {w.slug || '—'}</div>
-                  <div className="text-xs opacity-70">Status: {w.status || '—'}</div>
+          list.length ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {list.map(w => (
+                <div key={w.id} className="rounded-xl border p-4 space-y-3">
+                  <div>
+                    <div className="font-medium">{w.name || '—'}</div>
+                    <div className="text-xs opacity-70">Slug: {w.slug || '—'}</div>
+                    <div className="text-xs opacity-70">Status: {w.status || '—'}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input type="password" className="border rounded px-2 py-1 text-sm" placeholder="Neue PIN"
+                      value={pinById[w.id] || ''} onChange={e=>setPinById(s=>({ ...s, [w.id]: e.target.value }))} />
+                    <button className="px-3 py-1.5 border rounded text-sm" onClick={()=>setPin(w.id)}>PIN speichern</button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <input type="password" className="border rounded px-2 py-1 text-sm" placeholder="Neue PIN"
-                    value={pinById[w.id] || ''} onChange={e=>setPinById(s=>({ ...s, [w.id]: e.target.value }))} />
-                  <button className="px-3 py-1.5 border rounded text-sm" onClick={()=>setPin(w.id)}>PIN speichern</button>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : <div className="text-sm opacity-70">Noch keine Werber vorhanden.</div>
         )}
       </div>
     </div>
