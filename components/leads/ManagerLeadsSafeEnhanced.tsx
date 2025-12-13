@@ -10,6 +10,7 @@ export type BaseLead = {
   id: string
   handle?: string | null
   status?: string | null
+  contact_date?: string | null
   follow_up_at?: string | null
   follow_up_date?: string | null
   created_at?: string | null
@@ -18,7 +19,7 @@ export type BaseLead = {
 
 export type ExtraLead = {
   id: string
-  source?: string | null   // coalesced lead_source/source
+  source?: string | null   // from column 'source' (type: lead_source)
   notes?: any | null
   utm?: any | null
   extras?: any | null
@@ -37,6 +38,8 @@ function pretty(obj: any) {
   try { return JSON.stringify(obj, null, 2); } catch { return String(obj); }
 }
 
+const SOURCE_ENUM = ['manual','sws','admin','manager'] as const
+
 export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
   const [rows, setRows] = React.useState<LeadRow[]>(() => baseRows as LeadRow[]);
   const [q, setQ] = React.useState('');
@@ -45,7 +48,7 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
   const [follow, setFollow] = React.useState<string>('');
   const [sort, setSort] = React.useState<string>('created_at_desc');
 
-  // fetch extra info best-effort
+  // best-effort extra load
   React.useEffect(() => {
     let alive = true;
     (async () => {
@@ -60,6 +63,18 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
     })();
     return () => { alive = false; };
   }, []);
+
+  async function saveContact(id: string, contact_date: string | null) {
+    const body: any = { contact_date: contact_date || null }
+    const res = await fetch(`/api/manager/leads/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+    if (!res.ok) return;
+    const upd = await res.json()
+    setRows(prev => prev.map(r => r.id === id ? { ...r, contact_date: upd.contact_date, follow_up_date: upd.follow_up_date } : r))
+  }
 
   const normalized = React.useMemo(() => rows.map(r => ({
     ...r,
@@ -87,7 +102,13 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
     return okQ && okStatus && okSource && okFollow;
   }), [normalized, q, status, source, follow]);
 
-  const sources = React.useMemo(() => Array.from(new Set(normalized.map(x => x.source || 'unknown'))).sort(), [normalized]);
+  const sources = React.useMemo(() => {
+    // fixed enum + any unknowns present
+    const set = new Set<string>(SOURCE_ENUM as unknown as string[]);
+    normalized.forEach(x => set.add(x.source || 'unknown'));
+    return Array.from(set).sort();
+  }, [normalized]);
+
   const statuses = React.useMemo(() => Array.from(new Set(normalized.map(x => x.status || 'new'))).sort(), [normalized]);
 
   const sorted = React.useMemo(() => {
@@ -136,13 +157,14 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
       </div>
 
       <div className="overflow-auto rounded border">
-        <table className="min-w-[1100px] w-full text-sm">
+        <table className="min-w-[1200px] w-full text-sm">
           <thead>
             <tr className="bg-gray-50 text-gray-700">
               <th className="px-3 py-2 text-left">Handle</th>
               <th className="px-3 py-2 text-left">Live</th>
               <th className="px-3 py-2 text-left">Lead-Status</th>
               <th className="px-3 py-2 text-left">Quelle</th>
+              <th className="px-3 py-2 text-left">Kontakt</th>
               <th className="px-3 py-2 text-left">Follow‑Up (Date)</th>
               <th className="px-3 py-2 text-left">Follow‑Up (At)</th>
               <th className="px-3 py-2 text-left">Angelegt</th>
@@ -159,6 +181,25 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
                 <td className="px-3 py-2"><LeadLiveBadge handle={l.handle ?? ''} /></td>
                 <td className="px-3 py-2"><LeadStatusSelect id={l.id} value={l.status ?? 'new'} /></td>
                 <td className="px-3 py-2"><Badge>{l.source || '—'}</Badge></td>
+                <td className="px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      className="border rounded px-2 py-1"
+                      value={l.contact_date?.slice(0,10) || ''}
+                      onChange={(e) => {
+                        const v = e.target.value || null;
+                        setRows(prev => prev.map(r => r.id === l.id ? { ...r, contact_date: v } : r));
+                      }}
+                    />
+                    <button
+                      className="px-2 py-1 border rounded"
+                      onClick={() => saveContact(l.id, l.contact_date ?? null)}
+                    >
+                      Speichern
+                    </button>
+                  </div>
+                </td>
                 <td className="px-3 py-2">{l.follow_up_date || '—'}</td>
                 <td className="px-3 py-2">{l.follow_up_at ? new Date(l.follow_up_at).toLocaleString() : '—'}</td>
                 <td className="px-3 py-2">{l.created_at ? new Date(l.created_at).toLocaleString() : '—'}</td>

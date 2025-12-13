@@ -11,7 +11,7 @@ async function fetchLegacy(): Promise<BaseLead[]> {
   const sb = getAdminClient()
   const { data, error } = await sb
     .from('leads')
-    .select('id, handle, status, follow_up_at, follow_up_date, created_at, archived_at')
+    .select('id, handle, status, contact_date, follow_up_at, follow_up_date, created_at, archived_at')
     .is('archived_at', null)
     .order('created_at', { ascending: false })
   if (error) {
