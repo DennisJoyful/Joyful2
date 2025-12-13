@@ -52,8 +52,46 @@ function normSlug(v: string){
     .slice(0, 40);
 }
 
+async function readErrorMessage(res: Response): Promise<string> {
+  try {
+    const txt = await res.text(); // read ONCE
+    if (!txt) return `${res.status} ${res.statusText}`;
+    try {
+      const js = JSON.parse(txt);
+      if (js && typeof js === 'object' && 'error' in js) return String((js as any).error);
+      return txt.slice(0, 300);
+    } catch {
+      return txt.slice(0, 300);
+    }
+  } catch {
+    return `${res.status} ${res.statusText}`;
+  }
+}
+
+async function tryCreate(payloads: any[], endpoints: string[]): Promise<{ok:boolean, msg?:string}>{
+  for (const ep of endpoints) {
+    for (const p of payloads) {
+      try {
+        const res = await fetch(ep, {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          credentials:'include',
+          body: JSON.stringify(p),
+        });
+        if (res.ok) return { ok:true };
+        const msg = await readErrorMessage(res);
+        // If explicit "Nur Manager" appears, stop early to show clear cause
+        if (msg.toLowerCase().includes('nur manager')) return { ok:false, msg };
+      } catch (e:any) {
+        // continue trying other combos
+      }
+    }
+  }
+  return { ok:false, msg:'Unbekannter Fehler (Route oder Payload nicht akzeptiert).' };
+}
+
 async function ensureManagerRole(){
-  await fetch('/api/manager/ensure', { method:'POST', credentials:'include' });
+  try { await fetch('/api/manager/ensure', { method:'POST', credentials:'include' }); } catch {}
 }
 
 export default function WerberManager(){
@@ -96,19 +134,11 @@ export default function WerberManager(){
     const endpoints = [
       '/api/werber/create',
       '/api/werber/create/route',
+      '/api/sws/werber/create',
+      '/api/sws/werber/create/route',
     ];
-    let ok = false, lastMsg = '';
-    for (const ep of endpoints) {
-      for (const p of payloads) {
-        try{
-          const res = await fetch(ep, { method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body: JSON.stringify(p) });
-          if (res.ok) { ok = true; break; }
-          try{ const js = await res.json(); if (js?.error) lastMsg = js.error; } catch { lastMsg = await res.text(); }
-        }catch(e:any){ lastMsg = String(e.message || e); }
-      }
-      if (ok) break;
-    }
-    if (!ok) { setError(lastMsg || 'Werber konnte nicht angelegt werden.'); return; }
+    const result = await tryCreate(payloads, endpoints);
+    if (!result.ok) { setError(result.msg || 'Werber konnte nicht angelegt werden.'); return; }
     setNewName(''); setNewSlug(''); setNewPin('');
     await refresh();
   }
@@ -118,9 +148,9 @@ export default function WerberManager(){
     try{
       const res = await fetch('/api/werber/update-pin', { method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id, pin: pinById[id] || '' }) });
       if (!res.ok) {
-        let msg = 'PIN konnte nicht gesetzt werden.';
-        try { const j = await res.json(); if (j?.error) msg = j.error; } catch {}
-        setError(msg); return;
+        const msg = await readErrorMessage(res);
+        setError(msg || 'PIN konnte nicht gesetzt werden.');
+        return;
       }
       await refresh();
     }catch(e:any){ setError(String(e)); }
