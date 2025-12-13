@@ -1,4 +1,4 @@
-// app/api/apply/manager/route.ts
+// app/api/apply/manager/route.ts (lead_source fix)
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
@@ -13,16 +13,17 @@ export async function POST(req: Request){
   const { data: man } = await sb.from('managers').select('id').eq('slug', managerSlug).single();
   if(!man) return NextResponse.json({ error:'Manager nicht gefunden' }, { status:404 });
 
-  const norm = '@' + String(handle).replace(/^@/,'').trim();
-  const payload: any = {
+  const norm = handle.replace(/^@+/, '').trim();
+
+  const payload = {
     manager_id: man.id,
-    source: 'manual',
+    lead_source: 'manager',
     handle: norm,
-    status: 'invited',
+    status: 'new',
     notes: `Kontakt: ${contact}`,
     utm: utm || null,
     extras: extras || null,
-  };
+  } as any;
 
   const { error } = await sb.from('leads').insert(payload);
   if(error) return NextResponse.json({ error: error.message }, { status:400 });

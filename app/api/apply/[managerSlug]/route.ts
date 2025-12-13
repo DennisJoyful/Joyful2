@@ -1,16 +1,13 @@
-// app/api/apply/[managerSlug]/route.ts
-import { NextRequest, NextResponse } from 'next/server'
+// app/api/apply/[managerSlug]/route.ts (lead_source fix)
+import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
-export const dynamic = 'force-dynamic'
-
-export async function POST(req: NextRequest, { params }: { params: { managerSlug: string } }) {
+export async function POST(req: Request, { params }: { params: { managerSlug: string } }) {
   try {
-    const { handle, contact } = await req.json().catch(() => ({ handle: '', contact: null }))
-    const cleanHandle = String(handle || '').trim()
-    if (!cleanHandle) return NextResponse.json({ error: 'handle required' }, { status: 400 })
+    const { handle, contact } = await req.json()
+    const cleanHandle = String(handle || '').replace(/^@+/, '').trim()
+    if (!params?.managerSlug || !cleanHandle) return NextResponse.json({ error: 'bad request' }, { status: 400 })
 
-    // resolve manager by slug
     const { data: mgr, error: mgrErr } = await supabaseAdmin
       .from('managers')
       .select('id')
@@ -21,14 +18,14 @@ export async function POST(req: NextRequest, { params }: { params: { managerSlug
 
     const payload: any = {
       handle: cleanHandle,
-      source: 'application',
-      status: 'neu',
+      lead_source: 'manager',
+      status: 'new',
       contact_date: contact || null,
       manager_id: mgr.id,
     }
     const { data, error } = await supabaseAdmin.from('leads').insert(payload).select().single()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ ok: true })
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json(data)
   } catch (e:any) {
     return NextResponse.json({ error: String(e?.message || e) }, { status: 500 })
   }
