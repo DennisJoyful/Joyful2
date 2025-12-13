@@ -1,76 +1,93 @@
 // app/api/werber/create/route.ts
-import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { createClient } from '@supabase/supabase-js';
+import { NextRequest, NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { createClient } from '@supabase/supabase-js'
 
-function randomPin(){
-  // 6-digit random PIN by default
-  const n = Math.floor(100000 + Math.random() * 900000);
-  return String(n);
+export const dynamic = 'force-dynamic'
+
+type Body = {
+  slug?: string
+  code?: string
+  name?: string
 }
 
-export async function POST(req: Request){
-  const body = await req.json();
-  const { slug, passcode } = body as { slug?: string; passcode?: string };
+function norm(v?: string) {
+  if (!v) return undefined
+  const s = v.toLowerCase().trim().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '')
+  return s.slice(0, 40) || undefined
+}
 
-  if(!slug || !/^[a-z0-9-]{3,}$/.test(slug)){
-    return NextResponse.json({ error: 'Ungültiger Slug (min. 3 Zeichen, nur a-z, 0-9, -)' }, { status: 400 });
+export async function POST(req: NextRequest) {
+  try {
+    const supabase = createRouteHandlerClient({ cookies })
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const admin = createClient(url, key)
+
+    const { data: prof, error: profErr } = await admin
+      .from('profiles')
+      .select('user_id, role, manager_id')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    if (profErr) return NextResponse.json({ error: profErr.message }, { status: 500 })
+    if (!prof || prof.role !== 'manager' || !prof.manager_id) {
+      return NextResponse.json({ error: 'Nur Manager dürfen Werber anlegen' }, { status: 403 })
+    }
+
+    const body = (await req.json().catch(() => ({}))) as Body
+    const want = norm(body.slug) || norm(body.code)
+    if (!want) {
+      return NextResponse.json({ error: 'slug oder code erforderlich' }, { status: 400 })
+    }
+    const name = body.name?.trim() || null
+
+    async function nextFreeSlug(base: string): Promise<string> {
+      let candidate = base
+      for (let i = 1; i < 1000; i++) {
+        const { data: exists } = await admin.from('werber').select('id').or(`slug.eq.${candidate},code.eq.${candidate}`).maybeSingle()
+        if (!exists) return candidate
+        candidate = `${base}-${i}`.slice(0, 40)
+      }
+      return `${base}-${Date.now().toString().slice(-4)}`.slice(0, 40)
+    }
+
+    const free = await nextFreeSlug(want)
+
+    async function tryInsert(payload: Record<string, any>) {
+      return await admin.from('werber').insert(payload).select('id, slug, code, name').single()
+    }
+
+    let inserted: any = null
+    let lastErr: string | null = null
+
+    {
+      const { data, error } = await tryInsert({ slug: free, name, manager_id: prof.manager_id })
+      if (!error) inserted = data
+      else lastErr = error.message
+    }
+
+    if (!inserted) {
+      const { data, error } = await tryInsert({ code: free, name, manager_id: prof.manager_id })
+      if (!error) inserted = data
+      else lastErr = error.message
+    }
+
+    if (!inserted) {
+      const { data, error } = await tryInsert({ slug: free, code: free, name, manager_id: prof.manager_id })
+      if (!error) inserted = data
+      else lastErr = error.message
+    }
+
+    if (!inserted) {
+      return NextResponse.json({ error: lastErr || 'Werber DB-Anlage fehlgeschlagen' }, { status: 400 })
+    }
+
+    return NextResponse.json({ ok: true, item: inserted }, { status: 200 })
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || String(e) }, { status: 500 })
   }
-  const pin = passcode && /^\d{4,6}$/.test(passcode) ? passcode : randomPin();
-
-  // Check manager session
-  const sc = createServerComponentClient({ cookies });
-  const { data: me } = await sc.auth.getUser();
-  if(!me?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  // verify role=manager in profiles
-  const { data: prof, error: pe } = await sc.from('profiles').select('role, manager_id').eq('user_id', me.user.id).single();
-  if(pe || !prof || prof.role !== 'manager' || !prof.manager_id){
-    return NextResponse.json({ error: 'Nur Manager dürfen Werber anlegen' }, { status: 403 });
-  }
-
-  // Admin client with service role (server-side only)
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const service = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  if(!url || !service) return NextResponse.json({ error: 'Server-Misconfig: SUPABASE keys' }, { status: 500 });
-  const admin = createClient(url, service);
-
-  // Create auth user with synthetic email and PIN as password
-  const email = `${slug}@noemail.local`;
-  const { data: createdUser, error: ce } = await admin.auth.admin.createUser({
-    email,
-    password: pin,
-    email_confirm: true
-  });
-  if(ce && !String(ce.message||'').includes('already registered')){
-    return NextResponse.json({ error: 'Auth-Anlage fehlgeschlagen: ' + ce.message }, { status: 500 });
-  }
-
-  // lookup user id if existed
-  const userId = createdUser?.user?.id || (await (async()=>{
-    const { data } = await admin.auth.admin.listUsers();
-    return data.users.find(u=>u.email===email)?.id;
-  })());
-
-  if(!userId) return NextResponse.json({ error: 'Konnte User-ID nicht ermitteln' }, { status: 500 });
-
-  // Insert werber row & profile
-  const { error: werr } = await admin.from('werber').insert({
-    slug,
-    status: 'active',
-    manager_id: prof.manager_id,
-    pin: pin
-  });
-  if(werr && !String(werr.message).includes('duplicate key')){
-    return NextResponse.json({ error: 'Werber DB-Anlage fehlgeschlagen: ' + werr.message }, { status: 500 });
-  }
-
-  await admin.from('profiles').upsert({ user_id: userId, role: 'werber', manager_id: prof.manager_id }, { onConflict: 'user_id' });
-
-  return NextResponse.json({
-    ok: true,
-    slug,
-    passcode: pin
-  });
 }
