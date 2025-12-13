@@ -3,7 +3,17 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { createClient } from '@supabase/supabase-js'
-import bcrypt from 'bcryptjs'
+import { randomBytes, scrypt as _scrypt } from 'crypto'
+import { promisify } from 'util'
+
+const scrypt = promisify(_scrypt)
+
+// Hash format: scrypt:<saltHex>:<hashHex>
+async function hashPin(pin: string): Promise<string> {
+  const salt = randomBytes(16).toString('hex')
+  const derived = (await scrypt(pin, salt, 32)) as Buffer
+  return `scrypt:${salt}:${derived.toString('hex')}`
+}
 
 export async function POST(req: Request){
   try {
@@ -23,7 +33,7 @@ export async function POST(req: Request){
     const { data: prof } = await admin.from('profiles').select('role, manager_id').eq('user_id', user.id).maybeSingle()
     if(!prof || prof.role!=='manager' || !prof.manager_id) return NextResponse.json({ error: 'Nur Manager dürfen PINs setzen' }, { status: 403 })
 
-    // ensure column pin_hash exists
+    // check that column pin_hash exists
     const { data: cols } = await admin
       .from('information_schema.columns' as any)
       .select('column_name')
@@ -32,11 +42,11 @@ export async function POST(req: Request){
     const hasPinHash = Array.isArray(cols) && cols.some((c:any)=>c.column_name==='pin_hash')
     if (!hasPinHash) return NextResponse.json({ error: "Spalte 'pin_hash' fehlt in 'werber' (Migration ausführen)." }, { status: 400 })
 
-    const hash = await bcrypt.hash(pin, 10)
+    const pin_hash = await hashPin(pin)
 
     const { error: upErr } = await admin
       .from('werber')
-      .update({ pin_hash: hash })
+      .update({ pin_hash })
       .eq('id', id)
       .eq('manager_id', prof.manager_id)
 
