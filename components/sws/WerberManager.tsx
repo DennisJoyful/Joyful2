@@ -3,7 +3,7 @@
 import React from 'react';
 
 type Werber = { id: string; slug?: string|null; name?: string|null; status?: string|null; pin_set?: boolean|null };
-type ListShape = { items?: Werber[] } | Werber[] | { data?: Werber[] } | { rows?: Werber[] } | { error?: string };
+type ListShape = { items?: Werber[] } | { data?: Werber[] } | { rows?: Werber[] } | { error?: string } | Werber[];
 
 function normSlug(v: string){
   return v.toLowerCase().trim().replace(/[^a-z0-9-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40);
@@ -13,9 +13,18 @@ async function readErrorMessage(res: Response): Promise<string> {
   try {
     const txt = await res.text();
     if (!txt) return `${res.status} ${res.statusText}`;
-    try { const js = JSON.parse(txt); if (js?.error) return String(js.error); } catch {}
+    try { const js = JSON.parse(txt); if ((js as any)?.error) return String((js as any).error); } catch {}
     return txt.slice(0,300);
   } catch { return `${res.status} ${res.statusText}`; }
+}
+
+function coerceItems(data: ListShape): Werber[] {
+  if (Array.isArray(data)) return data as Werber[];
+  const anyData = data as any;
+  if (Array.isArray(anyData.items)) return anyData.items as Werber[];
+  if (Array.isArray(anyData.data)) return anyData.data as Werber[];
+  if (Array.isArray(anyData.rows)) return anyData.rows as Werber[];
+  return [];
 }
 
 async function fetchList(): Promise<Werber[]> {
@@ -24,8 +33,8 @@ async function fetchList(): Promise<Werber[]> {
     const res = await fetch('/api/werber/list?t=' + Date.now(), { cache:'no-store', credentials:'include' });
     if (res.ok) {
       const data: ListShape = await res.json();
-      const items = Array.isArray(data) ? data : (data.items || (data as any).data || (data as any).rows || []);
-      if (Array.isArray(items) && items.length) return items as Werber[];
+      const items = coerceItems(data);
+      if (items.length) return items;
     }
   } catch {}
   // fallback route (service-role): list2
@@ -33,8 +42,8 @@ async function fetchList(): Promise<Werber[]> {
     const res = await fetch('/api/werber/list2?t=' + Date.now(), { cache:'no-store', credentials:'include' });
     if (res.ok) {
       const data: ListShape = await res.json();
-      const items = Array.isArray(data) ? data : (data.items || (data as any).data || (data as any).rows || []);
-      return (items as Werber[]) || [];
+      const items = coerceItems(data);
+      return items;
     }
   } catch {}
   return [];
@@ -73,7 +82,7 @@ export default function WerberManager(){
       setNewSlug(''); setNewName('');
       await refresh();
       if (newPin.trim()) {
-        // find freshly created
+        // after refresh, find created by slug
         const created = (list || []).find(w => (w.slug === slug));
         const id = created?.id;
         if (id) {
@@ -83,8 +92,8 @@ export default function WerberManager(){
             body: JSON.stringify({ id, pin: newPin.trim() })
           });
           if (!r2.ok) setError('Werber angelegt, aber PIN-Setzen fehlgeschlagen: ' + await readErrorMessage(r2));
+          setNewPin('');
         }
-        setNewPin('');
       }
       await refresh();
     }catch(e:any){ setError(String(e.message || e)); }
