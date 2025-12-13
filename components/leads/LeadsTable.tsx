@@ -4,12 +4,12 @@ import React from 'react';
 
 export type LeadRow = {
   id: string;
-  handle: string;
-  status?: string;
-  source?: string;
-  notes?: string;
-  utm?: any;
-  extras?: any;
+  handle: string | null;
+  status?: string | null;
+  source?: string | null;
+  notes?: string | null;
+  utm?: any | null;
+  extras?: any | null;
   created_at?: string | null;
   follow_up_at?: string | null;
   follow_up_date?: string | null;
@@ -131,7 +131,7 @@ export default function LeadsTable({ rows }: Props) {
           <tbody>
             {sorted.map((r) => (
               <tr key={r.id} className="odd:bg-white even:bg-gray-50">
-                <td className="border-b p-2 font-medium">{r.handle}</td>
+                <td className="border-b p-2 font-medium">{r.handle ?? '—'}</td>
                 <td className="border-b p-2"><Badge>{r.status || '—'}</Badge></td>
                 <td className="border-b p-2"><Badge>{r.source || '—'}</Badge></td>
                 <td className="border-b p-2 text-sm">{r.follow_up_at || r.follow_up_date || '—'}</td>
