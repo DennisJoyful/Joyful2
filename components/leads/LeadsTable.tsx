@@ -22,7 +22,7 @@ function Badge({ children }: { children: React.ReactNode }) {
 }
 
 function pretty(obj: any) {
-  if (!obj) return null;
+  if (obj == null) return null;
   try { return JSON.stringify(obj, null, 2); } catch { return String(obj); }
 }
 
@@ -141,9 +141,9 @@ export default function LeadsTable({ rows }: Props) {
                     <summary className="cursor-pointer text-sm opacity-80">Aufklappen</summary>
                     <div className="mt-2 space-y-2 text-sm">
                       {r.notes ? (<div><div className="text-xs uppercase opacity-60 mb-1">Notizen</div><div className="whitespace-pre-wrap">{r.notes}</div></div>) : null}
-                      {r.utm ? (<div><div className="text-xs uppercase opacity-60 mb-1">UTM</div><pre className="bg-gray-100 rounded p-2 overflow-auto">{pretty(r.utm)}</pre></div>) : null}
-                      {r.extras ? (<div><div className="text-xs uppercase opacity-60 mb-1">Extras</div><pre className="bg-gray-100 rounded p-2 overflow-auto">{pretty(r.extras)}</pre></div>) : null}
-                      {!r.notes && !r.utm && !r.extras ? <div className="opacity-50">Keine zusätzlichen Angaben</div> : null}
+                      {r.utm != null ? (<div><div className="text-xs uppercase opacity-60 mb-1">UTM</div><pre className="bg-gray-100 rounded p-2 overflow-auto">{pretty(r.utm)}</pre></div>) : null}
+                      {r.extras != null ? (<div><div className="text-xs uppercase opacity-60 mb-1">Extras</div><pre className="bg-gray-100 rounded p-2 overflow-auto">{pretty(r.extras)}</pre></div>) : null}
+                      {!r.notes && r.utm == null && r.extras == null ? <div className="opacity-50">Keine zusätzlichen Angaben</div> : null}
                     </div>
                   </details>
                 </td>
