@@ -6,8 +6,8 @@ import React from 'react';
 type Werber = {
   id: string;
   name?: string | null;
-  code?: string | null;   // existing backends sometimes call this 'code' instead of 'slug'
-  slug?: string | null;   // if your API returns 'slug', we'll display it too
+  code?: string | null;
+  slug?: string | null;
   pin_set?: boolean | null;
 };
 
@@ -58,9 +58,10 @@ export default function WerberManager(){
   const [pinById, setPinById] = React.useState<Record<string,string>>({});
   const [error, setError] = React.useState<string>('');
 
-  // new: inputs for creating a werber
+  // create inputs
   const [newName, setNewName] = React.useState('');
   const [newSlug, setNewSlug] = React.useState('');
+  const [newPin, setNewPin] = React.useState(''); // optional: falls Backend 'passcode' erwartet
 
   async function refresh(){
     setLoading(true);
@@ -81,11 +82,21 @@ export default function WerberManager(){
     try{
       const slug = normSlug(newSlug || newName || 'werber');
       const payload: any = { slug, name: newName || undefined };
-      // Try canonical endpoint
-      let res = await fetch('/api/werber/create', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      if (newPin.trim()) payload.passcode = newPin.trim(); // kompatibel zu create/route.ts
+
+      // send to canonical endpoint first
+      let res = await fetch('/api/werber/create', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+      });
       if (!res.ok) {
-        // fallback path variant
-        res = await fetch('/api/werber/create/route', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        // fallback variant
+        res = await fetch('/api/werber/create/route', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify(payload)
+        });
       }
       if (!res.ok) {
         let msg = 'Werber konnte nicht angelegt werden.';
@@ -94,6 +105,7 @@ export default function WerberManager(){
       }
       setNewName('');
       setNewSlug('');
+      setNewPin('');
       await refresh();
     }catch(e:any){ setError(String(e.message || e)); }
   }
@@ -146,8 +158,14 @@ export default function WerberManager(){
             onChange={e=>setNewSlug(e.target.value)}
             onBlur={e=>setNewSlug(normSlug(e.target.value))}
           />
+          <input
+            className="border rounded px-3 py-2 text-sm"
+            placeholder="PIN (optional, sonst random)"
+            value={newPin}
+            onChange={e=>setNewPin(e.target.value)}
+          />
           <button className="px-3 py-2 border rounded" onClick={create}>Anlegen</button>
-          <div className="text-xs opacity-70">Erlaubt: Kleinbuchstaben, Ziffern, Bindestrich. Max 40 Zeichen.</div>
+          <div className="text-xs opacity-70">Slug: a–z, 0–9, „-“; max 40. PIN leer lassen → zufällig.</div>
         </div>
       </Section>
 
@@ -161,9 +179,7 @@ export default function WerberManager(){
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="font-medium">{w.name || '—'}</div>
-                      <div className="text-xs opacity-70">
-                        Code/Slug: {w.slug || w.code || '—'}
-                      </div>
+                      <div className="text-xs opacity-70">Code/Slug: {w.slug || w.code || '—'}</div>
                     </div>
                     <span className={"text-xs px-2 py-0.5 rounded-full border " + (w.pin_set ? "bg-green-50 border-green-200 text-green-700" : "bg-gray-50")}>
                       {w.pin_set ? "PIN gesetzt" : "Keine PIN"}
