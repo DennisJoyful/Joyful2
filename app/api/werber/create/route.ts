@@ -8,7 +8,6 @@ export const dynamic = 'force-dynamic'
 
 type Body = {
   slug?: string
-  code?: string
   name?: string
 }
 
@@ -28,6 +27,7 @@ export async function POST(req: NextRequest) {
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY!
     const admin = createClient(url, key)
 
+    // find manager context
     const { data: prof, error: profErr } = await admin
       .from('profiles')
       .select('user_id, role, manager_id')
@@ -39,55 +39,32 @@ export async function POST(req: NextRequest) {
     }
 
     const body = (await req.json().catch(() => ({}))) as Body
-    const want = norm(body.slug) || norm(body.code)
-    if (!want) {
-      return NextResponse.json({ error: 'slug oder code erforderlich' }, { status: 400 })
+    const want = norm(body.slug)
+    if (!want) return NextResponse.json({ error: 'slug erforderlich' }, { status: 400 })
+
+    // ensure slug is free
+    const { data: exists } = await admin.from('werber').select('id').eq('slug', want).maybeSingle()
+    if (exists) return NextResponse.json({ error: 'Slug ist bereits vergeben' }, { status: 409 })
+
+    // insert minimal columns (NO pin anywhere)
+    const payload: any = {
+      slug: want,
+      manager_id: prof.manager_id,
+      status: 'active',
     }
-    const name = body.name?.trim() || null
+    // include name only if column exists
+    const { data: cols } = await admin
+      .from('information_schema.columns' as any)
+      .select('column_name')
+      .eq('table_schema', 'public')
+      .eq('table_name', 'werber')
+    const hasName = Array.isArray(cols) && cols.some((c:any)=>c.column_name==='name')
+    if (hasName && body.name) payload.name = body.name.trim()
 
-    async function nextFreeSlug(base: string): Promise<string> {
-      let candidate = base
-      for (let i = 1; i < 1000; i++) {
-        const { data: exists } = await admin.from('werber').select('id').or(`slug.eq.${candidate},code.eq.${candidate}`).maybeSingle()
-        if (!exists) return candidate
-        candidate = `${base}-${i}`.slice(0, 40)
-      }
-      return `${base}-${Date.now().toString().slice(-4)}`.slice(0, 40)
-    }
-
-    const free = await nextFreeSlug(want)
-
-    async function tryInsert(payload: Record<string, any>) {
-      return await admin.from('werber').insert(payload).select('id, slug, code, name').single()
-    }
-
-    let inserted: any = null
-    let lastErr: string | null = null
-
-    {
-      const { data, error } = await tryInsert({ slug: free, name, manager_id: prof.manager_id })
-      if (!error) inserted = data
-      else lastErr = error.message
-    }
-
-    if (!inserted) {
-      const { data, error } = await tryInsert({ code: free, name, manager_id: prof.manager_id })
-      if (!error) inserted = data
-      else lastErr = error.message
-    }
-
-    if (!inserted) {
-      const { data, error } = await tryInsert({ slug: free, code: free, name, manager_id: prof.manager_id })
-      if (!error) inserted = data
-      else lastErr = error.message
-    }
-
-    if (!inserted) {
-      return NextResponse.json({ error: lastErr || 'Werber DB-Anlage fehlgeschlagen' }, { status: 400 })
-    }
-
+    const { data: inserted, error: insErr } = await admin.from('werber').insert(payload).select('id, slug, status, manager_id, name').single()
+    if (insErr) return NextResponse.json({ error: insErr.message }, { status: 400 })
     return NextResponse.json({ ok: true, item: inserted }, { status: 200 })
-  } catch (e: any) {
+  } catch (e:any) {
     return NextResponse.json({ error: e?.message || String(e) }, { status: 500 })
   }
 }

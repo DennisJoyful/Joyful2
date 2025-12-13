@@ -1,46 +1,48 @@
 // app/api/werber/update-pin/route.ts
-import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { createClient } from '@supabase/supabase-js'
+import bcrypt from 'bcryptjs'
 
 export async function POST(req: Request){
   try {
-    const body = await req.json();
-    const { id: werber_id, pin } = body || {};
-    if(!werber_id || !pin) return NextResponse.json({ error: 'werber_id und pin erforderlich' }, { status: 400 });
+    const body = await req.json().catch(()=>null) as { id?: string, pin?: string }
+    const id = body?.id
+    const pin = (body?.pin || '').trim()
+    if(!id || !pin) return NextResponse.json({ error: 'id und pin erforderlich' }, { status: 400 })
 
-    const sc = createServerComponentClient({ cookies });
-    const { data: me } = await sc.auth.getUser();
-    if(!me?.user) return NextResponse.json({ error:'Unauthorized' }, { status: 401 });
+    const supabase = createRouteHandlerClient({ cookies })
+    const { data: { user } } = await supabase.auth.getUser()
+    if(!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    // hole manager-context aus profiles
-    const { data: prof, error: profErr } = await sc.from('profiles').select('role, manager_id').eq('user_id', me.user.id).single();
-    if(profErr) return NextResponse.json({ error: profErr.message }, { status: 500 });
-    if(!prof || prof.role!=='manager' || !prof.manager_id) return NextResponse.json({ error: 'Nur Manager dürfen PINs setzen' }, { status: 403 });
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const admin = createClient(url, key)
 
-    // ermittle die Email des Werbers über Tabelle 'werber' (erwartet Spalten: id, email ODER username->email ableitbar)
-    const { data: w } = await sc.from('werber').select('id, email').eq('id', werber_id).maybeSingle();
-    const email = w?.email;
-    if(!email) return NextResponse.json({ error:'Werber-E-Mail nicht gefunden' }, { status: 404 });
+    const { data: prof } = await admin.from('profiles').select('role, manager_id').eq('user_id', user.id).maybeSingle()
+    if(!prof || prof.role!=='manager' || !prof.manager_id) return NextResponse.json({ error: 'Nur Manager dürfen PINs setzen' }, { status: 403 })
 
-    // Service-Client für Auth-Update
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    const admin = createClient(url, key);
+    // ensure column pin_hash exists
+    const { data: cols } = await admin
+      .from('information_schema.columns' as any)
+      .select('column_name')
+      .eq('table_schema', 'public')
+      .eq('table_name', 'werber')
+    const hasPinHash = Array.isArray(cols) && cols.some((c:any)=>c.column_name==='pin_hash')
+    if (!hasPinHash) return NextResponse.json({ error: "Spalte 'pin_hash' fehlt in 'werber' (Migration ausführen)." }, { status: 400 })
 
-    // Finde den Auth-User via E-Mail
-    const { data: list } = await admin.auth.admin.listUsers();
-    const user = list.users.find(u=>u.email===email);
-    if(!user) return NextResponse.json({ error:'Auth-User nicht gefunden' }, { status: 404 });
+    const hash = await bcrypt.hash(pin, 10)
 
-    // Update Passwort in Auth; KEIN Schreibzugriff auf werber.pin (Spalte existiert nicht)
-    const { error: up } = await admin.auth.admin.updateUserById(user.id, { password: pin });
-    if(up) return NextResponse.json({ error: 'PIN-Update fehlgeschlagen: ' + up.message }, { status: 500 });
+    const { error: upErr } = await admin
+      .from('werber')
+      .update({ pin_hash: hash })
+      .eq('id', id)
+      .eq('manager_id', prof.manager_id)
 
-    // Fertig. Keine DB-Spalten anfassen, da 'pin' nicht existiert.
-    return NextResponse.json({ ok:true });
-  } catch(e:any) {
-    return NextResponse.json({ error: e?.message || String(e) }, { status: 500 });
+    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 400 })
+    return NextResponse.json({ ok: true })
+  } catch (e:any) {
+    return NextResponse.json({ error: e?.message || String(e) }, { status: 500 })
   }
 }
