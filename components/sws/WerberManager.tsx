@@ -6,7 +6,8 @@ import React from 'react';
 type Werber = {
   id: string;
   name?: string | null;
-  code?: string | null;
+  code?: string | null;   // existing backends sometimes call this 'code' instead of 'slug'
+  slug?: string | null;   // if your API returns 'slug', we'll display it too
   pin_set?: boolean | null;
 };
 
@@ -42,11 +43,24 @@ function QR({ url }:{ url:string }){
   );
 }
 
+function normSlug(v: string){
+  return v
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+}
+
 export default function WerberManager(){
   const [list, setList] = React.useState<Werber[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [pinById, setPinById] = React.useState<Record<string,string>>({});
   const [error, setError] = React.useState<string>('');
+
+  // new: inputs for creating a werber
+  const [newName, setNewName] = React.useState('');
+  const [newSlug, setNewSlug] = React.useState('');
 
   async function refresh(){
     setLoading(true);
@@ -65,13 +79,21 @@ export default function WerberManager(){
   async function create(){
     setError('');
     try{
-      // try canonical create endpoint
-      let res = await fetch('/api/werber/create', { method:'POST' });
+      const slug = normSlug(newSlug || newName || 'werber');
+      const payload: any = { slug, name: newName || undefined };
+      // Try canonical endpoint
+      let res = await fetch('/api/werber/create', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
       if (!res.ok) {
-        // fallback: some repos use /create/route
-        res = await fetch('/api/werber/create/route', { method:'POST' });
+        // fallback path variant
+        res = await fetch('/api/werber/create/route', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
       }
-      if (!res.ok) throw new Error('Werber konnte nicht angelegt werden.');
+      if (!res.ok) {
+        let msg = 'Werber konnte nicht angelegt werden.';
+        try { const j = await res.json(); if (j?.error) msg = j.error; } catch {}
+        throw new Error(msg);
+      }
+      setNewName('');
+      setNewSlug('');
       await refresh();
     }catch(e:any){ setError(String(e.message || e)); }
   }
@@ -86,35 +108,62 @@ export default function WerberManager(){
         body: JSON.stringify({ id, pin })
       });
       if (res.ok) await refresh();
-      else setError('PIN konnte nicht gesetzt werden.');
+      else {
+        let msg = 'PIN konnte nicht gesetzt werden.';
+        try { const j = await res.json(); if (j?.error) msg = j.error; } catch {}
+        setError(msg);
+      }
     }catch(e:any){ setError(String(e)); }
   }
 
-  const baseApply = (code?:string|null) => code ? `${window.location.origin}/auth/werber?code=${encodeURIComponent(code)}` : '';
+  const linkFrom = (w: Werber) => {
+    const key = (w.slug || w.code || '').trim();
+    if (!key) return '';
+    return `${window.location.origin}/auth/werber?code=${encodeURIComponent(key)}`;
+  };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">SWS – Werber</h1>
-        <div className="flex gap-2">
-          <button className="px-3 py-2 border rounded" onClick={refresh}>Aktualisieren</button>
-          <button className="px-3 py-2 border rounded" onClick={create}>Werber anlegen</button>
-        </div>
+        <button className="px-3 py-2 border rounded" onClick={refresh}>Aktualisieren</button>
       </div>
 
       {error && <div className="text-red-600 text-sm">{error}</div>}
+
+      <Section title="Werber anlegen">
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            className="border rounded px-3 py-2 text-sm"
+            placeholder="Name (optional)"
+            value={newName}
+            onChange={e=>setNewName(e.target.value)}
+          />
+          <input
+            className="border rounded px-3 py-2 text-sm"
+            placeholder="Slug/Code (z. B. max-muster)"
+            value={newSlug}
+            onChange={e=>setNewSlug(e.target.value)}
+            onBlur={e=>setNewSlug(normSlug(e.target.value))}
+          />
+          <button className="px-3 py-2 border rounded" onClick={create}>Anlegen</button>
+          <div className="text-xs opacity-70">Erlaubt: Kleinbuchstaben, Ziffern, Bindestrich. Max 40 Zeichen.</div>
+        </div>
+      </Section>
 
       <Section title="Werber-Liste">
         {loading ? <div>Lade…</div> : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {list.map(w => {
-              const url = baseApply(w.code);
+              const url = linkFrom(w);
               return (
                 <div key={w.id} className="rounded-xl border p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="font-medium">{w.name || '—'}</div>
-                      <div className="text-xs opacity-70">Code: {w.code || '—'}</div>
+                      <div className="text-xs opacity-70">
+                        Code/Slug: {w.slug || w.code || '—'}
+                      </div>
                     </div>
                     <span className={"text-xs px-2 py-0.5 rounded-full border " + (w.pin_set ? "bg-green-50 border-green-200 text-green-700" : "bg-gray-50")}>
                       {w.pin_set ? "PIN gesetzt" : "Keine PIN"}
@@ -131,7 +180,7 @@ export default function WerberManager(){
                         <div className="text-xs opacity-70">Klick auf den QR öffnet das Bild in groß (zum Download).</div>
                       </div>
                     </div>
-                  ) : <div className="text-sm opacity-70">Kein Code vorhanden.</div>}
+                  ) : <div className="text-sm opacity-70">Kein Code/Slug vorhanden.</div>}
                   <div className="flex items-center gap-2">
                     <input
                       type="password"
