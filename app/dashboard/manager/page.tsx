@@ -1,15 +1,13 @@
-// app/dashboard/manager/page.tsx (RESTORE - minimal, matches original data flow)
+// app/dashboard/manager/page.tsx (SAFE UPGRADE)
 import { getAdminClient } from '@/lib/supabase/admin'
-import LeadActions from '@/components/leads/LeadActions'
-import LeadStatusSelect from '@/components/leads/LeadStatusSelect'
+import ManagerLeadsEnhanced, { LeadRow } from '@/components/leads/ManagerLeadsEnhanced'
 import Link from 'next/link'
-import LeadLiveBadge from '@/components/LeadLiveBadge'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-type Lead = {
+type DbLead = {
   id: string
   handle?: string | null
   status?: string | null
@@ -17,68 +15,57 @@ type Lead = {
   follow_up_date?: string | null
   created_at?: string | null
   archived_at?: string | null
+  // optional extended fields (may not exist in all envs)
+  source?: string | null
+  notes?: string | null
+  utm?: any | null
+  extras?: any | null
 }
 
-async function fetchLeads(): Promise<Lead[]> {
-  const supabase = getAdminClient()
-  const { data, error } = await supabase
-    .from('leads')
-    .select('id, handle, status, follow_up_at, follow_up_date, created_at, archived_at')
-    .is('archived_at', null)
-    .order('created_at', { ascending: false })
-
-  if (error) {
-    console.error('Failed to fetch leads', error)
-    return []
+async function fetchLeads(): Promise<DbLead[]> {
+  const sb = getAdminClient()
+  // Try extended select first; if it fails, fall back to legacy select
+  try {
+    const { data, error } = await sb
+      .from('leads')
+      .select('id, handle, status, follow_up_at, follow_up_date, created_at, archived_at, source, notes, utm, extras')
+      .is('archived_at', null)
+      .order('created_at', { ascending: false })
+    if (error) throw error
+    return data || []
+  } catch (e) {
+    // Fallback: legacy columns only (guaranteed to work)
+    const { data } = await sb
+      .from('leads')
+      .select('id, handle, status, follow_up_at, follow_up_date, created_at, archived_at')
+      .is('archived_at', null)
+      .order('created_at', { ascending: false })
+    return data || []
   }
-  return data || []
 }
 
-export default async function ManagerLeadsPage() {
-  const leads = await fetchLeads()
+export default async function ManagerPage() {
+  const dbRows = await fetchLeads()
+  const rows: LeadRow[] = (dbRows || []).map(l => ({
+    id: l.id,
+    handle: l.handle ?? null,
+    status: l.status ?? null,
+    source: (l as any).source ?? null,
+    notes: (l as any).notes ?? null,
+    utm: (l as any).utm ?? null,
+    extras: (l as any).extras ?? null,
+    created_at: l.created_at ?? null,
+    follow_up_at: l.follow_up_at ?? null,
+    follow_up_date: l.follow_up_date ?? null,
+  }))
+
   return (
-    <div className="p-4 md:p-6">
-      <div className="flex items-center justify-between mb-3">
+    <div className="p-4 md:p-6 space-y-4">
+      <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Leads</h1>
         <Link className="text-sm text-blue-600 hover:underline" href="/dashboard/manager/leads/create">Lead anlegen</Link>
       </div>
-
-      {leads.length === 0 ? (
-        <div className="text-gray-500">Keine Leads gefunden.</div>
-      ) : (
-        <div className="overflow-auto rounded border">
-          <table className="min-w-[860px] w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 text-gray-700">
-                <th className="px-3 py-2 text-left">Handle</th>
-                <th className="px-3 py-2 text-left">Live</th>
-                <th className="px-3 py-2 text-left">Lead-Status</th>
-                <th className="px-3 py-2 text-left">Follow‑Up (Date)</th>
-                <th className="px-3 py-2 text-left">Follow‑Up (At)</th>
-                <th className="px-3 py-2 text-left">Aktionen</th>
-              </tr>
-            </thead>
-            <tbody>
-              {leads.map((l) => (
-                <tr key={l.id} className="odd:bg-white even:bg-gray-50">
-                  <td className="px-3 py-2">
-                    {l.handle ? (
-                      <a className="text-blue-600 hover:underline" href={`https://www.tiktok.com/@${l.handle}`} target="_blank" rel="noreferrer">
-                        @{l.handle}
-                      </a>
-                    ) : '—'}
-                  </td>
-                  <td className="px-3 py-2"><LeadLiveBadge handle={l.handle ?? ''} /></td>
-                  <td className="px-3 py-2"><LeadStatusSelect id={l.id} value={l.status ?? 'new'} /></td>
-                  <td className="px-3 py-2">{l.follow_up_date || '—'}</td>
-                  <td className="px-3 py-2">{l.follow_up_at ? new Date(l.follow_up_at).toLocaleString() : '—'}</td>
-                  <td className="px-3 py-2"><LeadActions id={l.id} compact /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <ManagerLeadsEnhanced rows={rows} />
     </div>
   )
 }

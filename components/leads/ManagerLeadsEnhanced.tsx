@@ -131,7 +131,7 @@ export default function ManagerLeadsEnhanced({ rows }: Props) {
             {sorted.map((l) => (
               <tr key={l.id} className="odd:bg-white even:bg-gray-50">
                 <td className="px-3 py-2">
-                  {l.handle ? <a className="text-blue-600 hover:underline" href={`https://www.tiktok.com/@${l.handle}`} target="_blank">@{l.handle}</a> : '—'}
+                  {l.handle ? <a className="text-blue-600 hover:underline" href={`https://www.tiktok.com/@${l.handle}`} target="_blank" rel="noreferrer">@{l.handle}</a> : '—'}
                 </td>
                 <td className="px-3 py-2"><LeadLiveBadge handle={l.handle ?? ''} /></td>
                 <td className="px-3 py-2"><LeadStatusSelect id={l.id} value={l.status ?? 'new'} /></td>
