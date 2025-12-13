@@ -1,4 +1,4 @@
-// app/dashboard/manager/page.tsx (lead_source-aware)
+// app/dashboard/manager/page.tsx (SAFE MERGE: old query + optional lead_source)
 import { getAdminClient } from '@/lib/supabase/admin'
 import LeadActions from '@/components/leads/LeadActions'
 import LeadStatusSelect from '@/components/leads/LeadStatusSelect'
@@ -17,31 +17,52 @@ type Lead = {
   follow_up_date?: string | null
   created_at?: string | null
   archived_at?: string | null
-  lead_source?: 'manual' | 'sws' | 'admin' | 'manager' | null
 }
 
-async function fetchLeads(): Promise<Lead[]> {
+type LeadWithSource = Lead & { lead_source?: 'manual' | 'sws' | 'admin' | 'manager' | null }
+
+async function fetchLegacy(): Promise<Lead[]> {
   const supabase = getAdminClient()
   const { data, error } = await supabase
     .from('leads')
-    .select('id, handle, status, follow_up_at, follow_up_date, created_at, archived_at, lead_source')
+    .select('id, handle, status, follow_up_at, follow_up_date, created_at, archived_at')
     .is('archived_at', null)
     .order('created_at', { ascending: false })
-
   if (error) {
-    console.error('Failed to fetch leads', error)
+    console.error('Failed to fetch leads (legacy)', error)
     return []
   }
   return data || []
 }
 
-function SourceBadge({ s }: { s: Lead['lead_source'] }){
-  const label = s ?? 'unknown'
+async function fetchLeadSources(): Promise<Record<string, LeadWithSource['lead_source']>> {
+  const supabase = getAdminClient()
+  try {
+    const { data, error } = await supabase
+      .from('leads')
+      .select('id, lead_source')
+      .is('archived_at', null)
+    if (error) throw error
+    const map: Record<string, LeadWithSource['lead_source']> = {}
+    for (const row of (data || []) as any[]) {
+      map[row.id] = row.lead_source ?? null
+    }
+    return map
+  } catch (e) {
+    console.warn('lead_source fetch skipped:', e)
+    return {}
+  }
+}
+
+function SourceBadge({ s }: { s: LeadWithSource['lead_source'] }){
+  const label = s ?? '—'
   return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-gray-100 border">{label}</span>
 }
 
 export default async function ManagerLeadsPage() {
-  const leads = await fetchLeads()
+  const [legacy, sourceMap] = await Promise.all([fetchLegacy(), fetchLeadSources()])
+  const leads: LeadWithSource[] = legacy.map(l => ({ ...l, lead_source: sourceMap[l.id] ?? null }))
+
   return (
     <div className="p-4 md:p-6">
       <div className="flex items-center justify-between mb-3">
