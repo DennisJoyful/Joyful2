@@ -59,6 +59,7 @@ async function tryCreate(payloads: any[], endpoints: string[]): Promise<{ok:bool
         const res = await fetch(ep, {
           method:'POST',
           headers:{'Content-Type':'application/json'},
+          credentials:'include',
           body: JSON.stringify(p),
         });
         if (res.ok) return { ok:true };
@@ -95,7 +96,7 @@ export default function WerberManager(){
     setLoading(true);
     setError('');
     try{
-      const res = await fetch('/api/werber/list', { cache: 'no-store' });
+      const res = await fetch('/api/werber/list', { cache: 'no-store', credentials:'include' });
       const data: ListResp = await res.json();
       if (Array.isArray(data)) setList(data);
       else setError((data as any)?.error || 'Konnte Werber nicht laden.');
@@ -105,10 +106,17 @@ export default function WerberManager(){
 
   React.useEffect(()=>{ refresh(); }, []);
 
+  async function ensureManager(){
+    // ensures a managers-row exists for the current user (idempotent)
+    await fetch('/api/manager/ensure', { method:'POST', credentials:'include' });
+  }
+
   async function create(){
     setError('');
     const slug = normSlug(newSlug || newName || 'werber');
     const pin = newPin.trim();
+
+    await ensureManager(); // important before create
 
     // Build multiple payload variants to maximize compatibility
     const payloads: any[] = [
@@ -148,6 +156,7 @@ export default function WerberManager(){
       const res = await fetch('/api/werber/update-pin', {
         method:'POST',
         headers: { 'Content-Type':'application/json' },
+        credentials:'include',
         body: JSON.stringify({ id, pin })
       });
       if (res.ok) await refresh();
