@@ -1,35 +1,61 @@
-// app/dashboard/manager/page.tsx
-import { getAdminClient } from '@/lib/supabase/admin'
+import { supabaseServer } from '@/lib/supabaseServer'
 import Link from 'next/link'
-import ManagerLeadsSafeEnhanced, { BaseLead } from '@/components/leads/ManagerLeadsSafeEnhanced'
 
-export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
+export const fetchCache = 'force-no-store'
+export const runtime = 'nodejs'
 
-async function fetchLegacy(): Promise<BaseLead[]> {
-  const sb = getAdminClient()
-  const { data, error } = await sb
-    .from('leads')
-    .select('id, handle, status, contact_date, follow_up_at, follow_up_date, created_at, archived_at')
-    .is('archived_at', null)
-    .order('created_at', { ascending: false })
-  if (error) {
-    console.error('fetchLegacy error', error)
-    return []
+async function getSessionInfo() {
+  const s = supabaseServer()
+  const { data: me } = await s.auth.getUser()
+  const uid = me?.user?.id ?? null
+
+  let managerId: string | null = null
+  if (uid) {
+    const { data: prof } = await s
+      .from('profiles')
+      .select('manager_id')
+      .eq('user_id', uid)
+      .maybeSingle()
+    managerId = (prof?.manager_id as string) ?? null
+    if (!managerId) {
+      const { data: mgr } = await s
+        .from('managers')
+        .select('id')
+        .eq('user_id', uid)
+        .maybeSingle()
+      managerId = (mgr?.id as string) ?? null
+    }
   }
-  return (data ?? []) as BaseLead[]
+  return { uid, managerId }
 }
 
-export default async function ManagerPage() {
-  const baseRows = await fetchLegacy()
+export default async function ManagerHome() {
+  const { uid, managerId } = await getSessionInfo()
+
   return (
-    <div className="p-4 md:p-6 space-y-4">
+    <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Leads</h1>
-        <Link className="text-sm text-blue-600 hover:underline" href="/dashboard/manager/leads/create">Lead anlegen</Link>
+        <h1 className="text-2xl font-semibold">Manager Dashboard</h1>
+        <div className="flex gap-2">
+          <Link href="/dashboard/manager/leads" className="px-3 py-1.5 rounded-md border hover:bg-muted">
+            Zu meinen Leads
+          </Link>
+        </div>
       </div>
-      <ManagerLeadsSafeEnhanced baseRows={baseRows} />
+
+      {/* Debug panel visible to help diagnose manager scoping */}
+      <div className="rounded-lg border bg-slate-50 text-slate-900 p-3 text-xs">
+        <div><strong>Debug</strong></div>
+        <div>User: <code>{uid ?? '–'}</code></div>
+        <div>managerId (scope candidate): <code>{managerId ?? '–'}</code></div>
+        <div>Tipp: Öffne <code>/dashboard/manager/leads</code>, dort siehst du zusätzlich die distinct manager_ids der geladenen Leads.</div>
+      </div>
+
+      <p className="text-sm text-muted-foreground">
+        Wenn hier eine andere <code>managerId</code> steht als erwartet, stimmt die Zuordnung in <code>profiles</code> nicht.
+      </p>
     </div>
   )
 }
