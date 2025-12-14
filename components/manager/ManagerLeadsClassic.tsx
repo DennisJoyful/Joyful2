@@ -1,5 +1,6 @@
 'use client'
 import { useState, useMemo, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 
 export type ClassicLead = {
   id: string
@@ -26,8 +27,16 @@ export type ClassicLead = {
 const STATUS_OPTIONS = ['new','contacted','no_response','live','archived']
 
 function LiveBadge({ status }: { status: string | null }) {
-  if (status !== 'live') return null
-  return <span className="ml-2 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">LIVE</span>
+  const isLive = status === 'live'
+  const label = isLive ? 'LIVE' : 'OFFLINE'
+  const cls = isLive
+    ? 'bg-green-100 text-green-800'
+    : 'bg-gray-200 text-gray-700'
+  return (
+    <span className={`ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>
+      {label}
+    </span>
+  )
 }
 
 async function updateLead(id: string, patch: Record<string, any>) {
@@ -46,6 +55,11 @@ async function updateLead(id: string, patch: Record<string, any>) {
 export default function ManagerLeadsClassic({ initial }: { initial: ClassicLead[] }) {
   const [rows, setRows] = useState<ClassicLead[]>(initial)
   const [isPending, startTransition] = useTransition()
+  const router = useRouter()
+
+  const refresh = () => {
+    router.refresh()
+  }
 
   const sorted = useMemo(() => {
     return [...rows].sort((a,b) => (b.created_at || '').localeCompare(a.created_at || ''))
@@ -56,6 +70,7 @@ export default function ManagerLeadsClassic({ initial }: { initial: ClassicLead[
       try {
         await updateLead(id, { status })
         setRows(prev => prev.map(r => r.id === id ? { ...r, status } : r))
+        refresh()
       } catch (e:any) {
         alert(e.message)
       }
@@ -67,6 +82,7 @@ export default function ManagerLeadsClassic({ initial }: { initial: ClassicLead[
       try {
         await updateLead(id, { status: 'archived', archived_at: new Date().toISOString() })
         setRows(prev => prev.filter(r => r.id !== id))
+        refresh()
       } catch (e:any) {
         alert(e.message)
       }
@@ -79,6 +95,7 @@ export default function ManagerLeadsClassic({ initial }: { initial: ClassicLead[
         const ts = new Date().toISOString()
         await updateLead(id, { contacted_at: ts, status: 'contacted' })
         setRows(prev => prev.map(r => r.id === id ? { ...r, contacted_at: ts, status: 'contacted' } : r))
+        refresh()
       } catch (e:any) {
         alert(e.message)
       }
@@ -93,6 +110,7 @@ export default function ManagerLeadsClassic({ initial }: { initial: ClassicLead[
         const cnt = (current?.follow_up_sent_count || 0) + 1
         await updateLead(id, { follow_up_at: ts, follow_up_sent_count: cnt, last_follow_up_at: ts })
         setRows(prev => prev.map(r => r.id === id ? { ...r, follow_up_at: ts, follow_up_sent_count: cnt, last_follow_up_at: ts } : r))
+        refresh()
       } catch (e:any) {
         alert(e.message)
       }
