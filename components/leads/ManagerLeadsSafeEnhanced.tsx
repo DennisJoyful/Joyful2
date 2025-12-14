@@ -174,14 +174,9 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
           </thead>
           <tbody>
             {sorted.map((l) => (
-              <tr key={l.id} className="odd:bg-white even:bg-gray-50">
-                <td className="px-3 py-2">
+              <tr key={l.id} className="odd:bg-white even:bg-gray-50"><td className="px-3 py-2">
                   {l.handle ? <a className="text-blue-600 hover:underline" href={`https://www.tiktok.com/@${l.handle}`} target="_blank" rel="noreferrer">@{l.handle}</a> : '—'}
-                </td>
-                <td className="px-3 py-2"><LeadLiveBadge handle={l.handle ?? ''} /></td>
-                <td className="px-3 py-2"><LeadStatusSelect id={l.id} value={l.status ?? 'new'} /></td>
-                <td className="px-3 py-2"><Badge>{l.source || '—'}</Badge></td>
-                <td className="px-3 py-2">
+                </td><td className="px-3 py-2 whitespace-nowrap"><LeadLiveBadge handle={l.handle ?? ""} refreshMs={15000} /></td><td className="px-3 py-2"><LeadStatusSelect id={l.id} value={l.status ?? 'new'} /></td><td className="px-3 py-2"><Badge>{l.source || '—'}</Badge></td><td className="px-3 py-2">
                   <div className="flex items-center gap-2">
                     <input
                       type="date"
@@ -199,11 +194,7 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
                       Speichern
                     </button>
                   </div>
-                </td>
-                <td className="px-3 py-2">{l.follow_up_date || '—'}</td>
-                <td className="px-3 py-2">{l.follow_up_at ? new Date(l.follow_up_at).toLocaleString() : '—'}</td>
-                <td className="px-3 py-2">{l.created_at ? new Date(l.created_at).toLocaleString() : '—'}</td>
-                <td className="px-3 py-2">
+                </td><td className="px-3 py-2">{l.follow_up_date || '—'}</td><td className="px-3 py-2">{l.follow_up_at ? new Date(l.follow_up_at).toLocaleString() : '—'}</td><td className="px-3 py-2">{l.created_at ? new Date(l.created_at).toLocaleString() : '—'}</td><td className="px-3 py-2">
                   <details>
                     <summary className="cursor-pointer text-sm opacity-80">Aufklappen</summary>
                     <div className="mt-2 space-y-2 text-sm max-w-[520px]">
@@ -213,9 +204,7 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
                       {!l.notes && l.utm == null && l.extras == null ? <div className="opacity-50">Keine zusätzlichen Angaben</div> : null}
                     </div>
                   </details>
-                </td>
-                <td className="px-3 py-2"><LeadActions id={l.id} compact /></td>
-              </tr>
+                </td><td className="px-3 py-2"><LeadActions id={l.id} compact /></td></tr>
             ))}
           </tbody>
         </table>
