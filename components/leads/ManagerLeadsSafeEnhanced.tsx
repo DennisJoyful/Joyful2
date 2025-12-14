@@ -172,85 +172,41 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
               <th className="px-3 py-2 text-left">Aktionen</th>
             </tr>
           </thead>
-          
-<tbody>
-  {sorted.map((l) => (
-    <tr key={l.id} className="odd:bg-white even:bg-gray-50">
-      {/* 1) HANDLE */}
-      <td className="px-3 py-2">
-        {l.handle ? (
-          <a className="text-blue-600 hover:underline" href={`https://www.tiktok.com/@${l.handle}`} target="_blank" rel="noreferrer">
-            @{l.handle}
-          </a>
-        ) : '—'}
-      </td>
-
-      {/* 2) LIVE */}
-      <td className="px-3 py-2 whitespace-nowrap">
-        <LeadLiveBadge handle={l.handle ?? ''} refreshMs={15000} />
-      </td>
-
-      {/* 3) LEAD-STATUS */}
-      <td className="px-3 py-2">
-        <LeadStatusSelect id={l.id} initial={l.status ?? 'new'} />
-      </td>
-
-      {/* 4) QUELLE */}
-      <td className="px-3 py-2 whitespace-nowrap">
-        <Badge>{l.source || '—'}</Badge>
-      </td>
-
-      {/* 5) KONTAKT */}
-      <td className="px-3 py-2">
-        <div className="flex items-center gap-2">
-          <input
-            type="date"
-            className="border rounded px-2 py-1"
-            value={l.contact_date?.slice(0,10) || ''}
-            onChange={(e) => {
-              const v = e.target.value || null;
-              setRows(prev => prev.map(r => r.id === l.id ? { ...r, contact_date: v } : r));
-            }}
-          />
-          <button
-            className="px-2 py-1 border rounded"
-            onClick={() => saveContact(l.id, l.contact_date ?? null)}
-          >
-            Speichern
-          </button>
-        </div>
-      </td>
-
-      {/* 6) FOLLOW-UP (Date) */}
-      <td className="px-3 py-2">{l.follow_up_date || l.follow_up_at || '—'}</td>
-
-      {/* 7) FOLLOW-UP (At) */}
-      <td className="px-3 py-2">{l.follow_up_at || '—'}</td>
-
-      {/* 8) ANGELEGT */}
-      <td className="px-3 py-2">{l.created_at ? new Date(l.created_at).toLocaleString() : '—'}</td>
-
-      {/* 9) DETAILS */}
-      <td className="px-3 py-2">
-        <details>
-          <summary className="cursor-pointer text-sm opacity-80">Aufklappen</summary>
-          <div className="mt-2 space-y-2 text-sm max-w-[520px]">
-            {l.notes ? (<div><div className="text-xs uppercase opacity-60 mb-1">Notizen</div><div className="whitespace-pre-wrap">{l.notes}</div></div>) : null}
-            {l.utm != null ? (<div><div className="text-xs uppercase opacity-60 mb-1">UTM</div><pre className="rounded p-2 overflow-auto">{pretty(l.utm)}</pre></div>) : null}
-            {l.extras != null ? (<div><div className="text-xs uppercase opacity-60 mb-1">Extras</div><pre className="rounded p-2 overflow-auto">{pretty(l.extras)}</pre></div>) : null}
-            {!l.notes && l.utm == null && l.extras == null ? <div className="opacity-50">Keine zusätzlichen Angaben</div> : null}
-          </div>
-        </details>
-      </td>
-
-      {/* 10) AKTIONEN */}
-      <td className="px-3 py-2">
-        <LeadActions id={l.id} compact />
-      </td>
-    </tr>
-  ))}
-</tbody>
-
+          <tbody>
+            {sorted.map((l) => (
+              <tr key={l.id} className="odd:bg-white even:bg-gray-50"><td className="px-3 py-2">
+                  {l.handle ? <a className="text-blue-600 hover:underline" href={`https://www.tiktok.com/@${l.handle}`} target="_blank" rel="noreferrer">@{l.handle}</a> : '—'}
+                </td><td className="px-3 py-2 whitespace-nowrap"><LeadLiveBadge handle={l.handle ?? ""} refreshMs={15000} /></td><td className="px-3 py-2"><LeadStatusSelect id={l.id} value={l.status ?? 'new'} /></td><td className="px-3 py-2"><Badge>{l.source || '—'}</Badge></td><td className="px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      className="border rounded px-2 py-1"
+                      value={l.contact_date?.slice(0,10) || ''}
+                      onChange={(e) => {
+                        const v = e.target.value || null;
+                        setRows(prev => prev.map(r => r.id === l.id ? { ...r, contact_date: v } : r));
+                      }}
+                    />
+                    <button
+                      className="px-2 py-1 border rounded"
+                      onClick={() => saveContact(l.id, l.contact_date ?? null)}
+                    >
+                      Speichern
+                    </button>
+                  </div>
+                </td><td className="px-3 py-2">{l.follow_up_date || '—'}</td><td className="px-3 py-2">{l.follow_up_at ? new Date(l.follow_up_at).toLocaleString() : '—'}</td><td className="px-3 py-2">{l.created_at ? new Date(l.created_at).toLocaleString() : '—'}</td><td className="px-3 py-2">
+                  <details>
+                    <summary className="cursor-pointer text-sm opacity-80">Aufklappen</summary>
+                    <div className="mt-2 space-y-2 text-sm max-w-[520px]">
+                      {l.notes ? (<div><div className="text-xs uppercase opacity-60 mb-1">Notizen</div><div className="whitespace-pre-wrap">{l.notes}</div></div>) : null}
+                      {l.utm != null ? (<div><div className="text-xs uppercase opacity-60 mb-1">UTM</div><pre className="bg-gray-100 rounded p-2 overflow-auto">{pretty(l.utm)}</pre></div>) : null}
+                      {l.extras != null ? (<div><div className="text-xs uppercase opacity-60 mb-1">Extras</div><pre className="bg-gray-100 rounded p-2 overflow-auto">{pretty(l.extras)}</pre></div>) : null}
+                      {!l.notes && l.utm == null && l.extras == null ? <div className="opacity-50">Keine zusätzlichen Angaben</div> : null}
+                    </div>
+                  </details>
+                </td><td className="px-3 py-2"><LeadActions id={l.id} compact /></td></tr>
+            ))}
+          </tbody>
         </table>
       </div>
     </div>
