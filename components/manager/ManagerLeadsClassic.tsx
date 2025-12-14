@@ -38,7 +38,7 @@ async function updateLead(id: string, patch: Record<string, any>) {
   })
   if (!res.ok) {
     const j = await res.json().catch(() => ({}))
-    throw new Error(j?.error || 'Update failed')
+    throw new Error(j?.error || 'Update fehlgeschlagen')
   }
   return res.json()
 }
@@ -56,9 +56,8 @@ export default function ManagerLeadsClassic({ initial }: { initial: ClassicLead[
       try {
         await updateLead(id, { status })
         setRows(prev => prev.map(r => r.id === id ? { ...r, status } : r))
-      } catch (e) {
-        console.error(e)
-        alert((e as Error).message)
+      } catch (e:any) {
+        alert(e.message)
       }
     })
   }
@@ -68,9 +67,8 @@ export default function ManagerLeadsClassic({ initial }: { initial: ClassicLead[
       try {
         await updateLead(id, { status: 'archived', archived_at: new Date().toISOString() })
         setRows(prev => prev.filter(r => r.id !== id))
-      } catch (e) {
-        console.error(e)
-        alert((e as Error).message)
+      } catch (e:any) {
+        alert(e.message)
       }
     })
   }
@@ -78,11 +76,11 @@ export default function ManagerLeadsClassic({ initial }: { initial: ClassicLead[
   const onContactSet = (id: string) => {
     startTransition(async () => {
       try {
-        await updateLead(id, { contacted_at: new Date().toISOString(), status: 'contacted' })
-        setRows(prev => prev.map(r => r.id === id ? { ...r, contacted_at: new Date().toISOString(), status: 'contacted' } : r))
-      } catch (e) {
-        console.error(e)
-        alert((e as Error).message)
+        const ts = new Date().toISOString()
+        await updateLead(id, { contacted_at: ts, status: 'contacted' })
+        setRows(prev => prev.map(r => r.id === id ? { ...r, contacted_at: ts, status: 'contacted' } : r))
+      } catch (e:any) {
+        alert(e.message)
       }
     })
   }
@@ -90,11 +88,13 @@ export default function ManagerLeadsClassic({ initial }: { initial: ClassicLead[
   const onFollowUp = (id: string) => {
     startTransition(async () => {
       try {
-        await updateLead(id, { follow_up_at: new Date().toISOString(), follow_up_sent_count: (rows.find(r=>r.id===id)?.follow_up_sent_count || 0) + 1 })
-        setRows(prev => prev.map(r => r.id === id ? { ...r, follow_up_at: new Date().toISOString(), follow_up_sent_count: (r.follow_up_sent_count || 0) + 1 } : r))
-      } catch (e) {
-        console.error(e)
-        alert((e as Error).message)
+        const ts = new Date().toISOString()
+        const current = rows.find(r=>r.id===id)
+        const cnt = (current?.follow_up_sent_count || 0) + 1
+        await updateLead(id, { follow_up_at: ts, follow_up_sent_count: cnt, last_follow_up_at: ts })
+        setRows(prev => prev.map(r => r.id === id ? { ...r, follow_up_at: ts, follow_up_sent_count: cnt, last_follow_up_at: ts } : r))
+      } catch (e:any) {
+        alert(e.message)
       }
     })
   }
@@ -124,6 +124,7 @@ export default function ManagerLeadsClassic({ initial }: { initial: ClassicLead[
                     className="border rounded-md px-2 py-1 bg-background"
                     defaultValue={row.status ?? 'new'}
                     onChange={(e) => onStatusChange(row.id, e.target.value)}
+                    disabled={isPending}
                   >
                     {STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                   </select>

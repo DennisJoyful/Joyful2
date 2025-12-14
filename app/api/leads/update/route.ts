@@ -1,31 +1,74 @@
 // app/api/leads/update/route.ts
-import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { NextResponse } from 'next/server'
+import { getAdminClient } from '@/lib/supabase/admin'
+import { supabaseServer } from '@/lib/supabaseServer'
 
-export async function POST(req: Request){
-  const body = await req.json();
-  const { id, status, werber_id } = body as { id: string; status?: string; werber_id?: string | null };
+export const dynamic = 'force-dynamic'
 
-  const s = createServerComponentClient({ cookies });
-  const { data: me } = await s.auth.getUser();
-  if(!me?.user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+type Body = {
+  id: string
+  // optional fields we allow to update
+  status?: string | null
+  notes?: string | null
+  contacted_at?: string | null
+  follow_up_at?: string | null
+  follow_up_date?: string | null
+  archived_at?: string | null
+  last_follow_up_at?: string | null
+  follow_up_sent?: string | null
+  follow_up_sent_count?: number | null
+  follow_up_count?: number | null
+  contact_date?: string | null
+}
 
-  // Check manager role and ownership via profiles.manager_id vs leads.manager_id
-  const { data: prof } = await s.from('profiles').select('role, manager_id').eq('user_id', me.user.id).single();
-  if(!prof || prof.role!=='manager') return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+const ALLOWED = new Set([
+  'status','notes','contacted_at','follow_up_at','follow_up_date',
+  'archived_at','last_follow_up_at','follow_up_sent','follow_up_sent_count',
+  'follow_up_count','contact_date'
+])
 
-  const { data: lead } = await s.from('leads').select('id, manager_id').eq('id', id).single();
-  if(!lead || lead.manager_id !== prof.manager_id) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+export async function POST(req: Request) {
+  try {
+    const body = (await req.json()) as Body
+    if (!body?.id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
-  const patch: any = {};
-  if (status) patch.status = status;
-  if (typeof werber_id !== 'undefined') patch.werber_id = werber_id || null;
+    // who is calling?
+    const s = supabaseServer()
+    const { data: me } = await s.auth.getUser()
+    const uid = me?.user?.id
+    if (!uid) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
-  if (Object.keys(patch).length===0) return NextResponse.json({ ok:true, noop:true });
+    // find caller manager_id
+    const { data: prof, error: profErr } = await s.from('profiles').select('manager_id, role').eq('user_id', uid).maybeSingle()
+    if (profErr) return NextResponse.json({ error: 'profile read failed' }, { status: 500 })
+    const callerManagerId = prof?.manager_id || null
+    const isAdmin = prof?.role === 'admin'
 
-  const { error } = await s.from('leads').update(patch).eq('id', id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    const admin = getAdminClient()
 
-  return NextResponse.json({ ok: true });
+    // load target lead to verify scope
+    const { data: lead, error: leadErr } = await admin.from('leads').select('id, manager_id').eq('id', body.id).single()
+    if (leadErr || !lead) return NextResponse.json({ error: 'lead not found' }, { status: 404 })
+
+    if (!isAdmin && (!callerManagerId || lead.manager_id !== callerManagerId)) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+    }
+
+    // build safe update
+    const patch: Record<string, any> = {}
+    for (const [k,v] of Object.entries(body)) {
+      if (k === 'id') continue
+      if (ALLOWED.has(k)) patch[k] = v
+    }
+    if (!Object.keys(patch).length) {
+      return NextResponse.json({ error: 'no updatable fields in payload' }, { status: 400 })
+    }
+
+    const { error: upErr } = await admin.from('leads').update(patch).eq('id', body.id)
+    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 400 })
+
+    return NextResponse.json({ ok: true })
+  } catch (e:any) {
+    return NextResponse.json({ error: e?.message || 'unexpected' }, { status: 500 })
+  }
 }
