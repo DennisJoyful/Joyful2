@@ -1,8 +1,8 @@
 import { supabaseServer } from '@/lib/supabaseServer'
+import { getAdminClient } from '@/lib/supabase/admin'
 import LeadsTable, { LeadRow } from '@/components/leads/LeadsTable'
 import { redirect } from 'next/navigation'
 
-// Hard disable caching for this page
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 export const fetchCache = 'force-no-store'
@@ -34,35 +34,35 @@ async function resolveCurrentManagerId() {
 }
 
 export default async function Page() {
-  const s = supabaseServer()
-  const { data: me } = await s.auth.getUser()
-  const uid = me?.user?.id
+  const { uid, managerId } = await resolveCurrentManagerId()
   if (!uid) redirect('/auth/sign-in?next=/dashboard/manager/leads')
-
-  const { managerId } = await resolveCurrentManagerId()
 
   if (!managerId) {
     return (
       <div className="p-6 space-y-2">
         <h1 className="text-2xl font-semibold">Leads</h1>
         <div className="rounded-lg border bg-amber-50 text-amber-900 p-3 text-sm">
-          <div><strong>Debug:</strong> Kein manager_id für aktuellen User gefunden.</div>
+          <div><strong>Hinweis:</strong> Kein manager_id für aktuellen User gefunden.</div>
           <div>User: <code>{uid}</code></div>
-          <div>profiles.manager_id ist null und kein managers.user_id Match vorhanden.</div>
+          <div>Bitte in <code>profiles.manager_id</code> zuweisen oder den Nutzer als Owner in <code>managers.user_id</code> hinterlegen.</div>
         </div>
       </div>
     )
   }
 
-  // Query strictly scoped to current managerId (session client, no service role)
-  const { data: rowsRaw, error } = await s
+  // Use admin client (service role) BUT enforce strict where and post-filter as double safety.
+  const admin = getAdminClient()
+
+  const { data: rowsRaw, error } = await admin
     .from('leads')
     .select('id, handle, status, lead_source, notes, utm, extras, created_at, follow_up_at, follow_up_date, manager_id')
-    .eq('manager_id', managerId)
+    .eq('manager_id', managerId) // primary filter
     .order('created_at', { ascending: false })
 
-  // Collect distinct manager_ids in result (should be exactly [managerId])
-  const distinctManagerIds = Array.from(new Set((rowsRaw ?? []).map((r: any) => r.manager_id).filter(Boolean)))
+  // Defensive post-filter in case any future change drops the where-clause.
+  const safeRowsRaw = (rowsRaw ?? []).filter((r: any) => r?.manager_id === managerId)
+
+  const distinctManagerIds = Array.from(new Set(safeRowsRaw.map((r: any) => r.manager_id).filter(Boolean)))
 
   if (error) {
     return (
@@ -73,7 +73,7 @@ export default async function Page() {
     )
   }
 
-  const rows: LeadRow[] = (rowsRaw ?? []).map((r: any) => ({
+  const rows: LeadRow[] = safeRowsRaw.map((r: any) => ({
     id: r.id,
     handle: r.handle ?? '',
     status: r.status ?? 'new',
@@ -92,7 +92,6 @@ export default async function Page() {
         <h1 className="text-2xl font-semibold">Leads</h1>
       </div>
 
-      {/* Debug banner to verify scoping at runtime */}
       <div className="rounded-lg border bg-slate-50 text-slate-900 p-3 text-xs">
         <div><strong>Debug</strong></div>
         <div>User: <code>{uid}</code></div>
