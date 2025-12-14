@@ -47,21 +47,26 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
   const [source, setSource] = React.useState<string>('');
   const [follow, setFollow] = React.useState<string>('');
   const [sort, setSort] = React.useState<string>('created_at_desc');
+  const [loadingExtras, setLoadingExtras] = React.useState(false);
 
-  // best-effort extra load
-  React.useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const res = await fetch('/api/manager/leads/extra', { cache: 'no-store' });
-        if (!res.ok) return;
+  const refreshExtras = async () => {
+    setLoadingExtras(true);
+    try {
+      const res = await fetch('/api/manager/leads/extra', { cache: 'no-store' });
+      if (res.ok) {
         const extras: ExtraLead[] = await res.json();
-        const map = new Map(extras.map(e => [e.id, e]));
-        if (!alive) return;
+        const map = new Map(extras.map((e: ExtraLead) => [e.id, e]));
         setRows(prev => prev.map(b => ({ ...b, ...(map.get(b.id) || {}) })));
-      } catch {}
-    })();
-    return () => { alive = false; };
+      }
+    } catch (error) {
+      console.error('Fehler beim Aktualisieren der Quellen:', error);
+    } finally {
+      setLoadingExtras(false);
+    }
+  };
+
+  React.useEffect(() => {
+    refreshExtras(); // Lädt initial
   }, []);
 
   async function saveContact(id: string, contact_date: string | null) {
@@ -145,6 +150,14 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
           <option value="future">Zukünftig</option>
           <option value="none">Keins</option>
         </select>
+
+        <button
+          onClick={refreshExtras}
+          disabled={loadingExtras}
+          className="border rounded px-4 py-2 text-sm bg-green-600 text-white hover:bg-green-500 disabled:opacity-50"
+        >
+          {loadingExtras ? 'Aktualisiere...' : 'Quellen neu laden'}
+        </button>
 
         <div className="ml-auto flex items-center gap-1 text-sm">
           <span className="opacity-60 mr-1">Sortieren:</span>

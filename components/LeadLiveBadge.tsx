@@ -7,7 +7,7 @@ type Props = {
   refreshMs?: number;
 };
 
-export default function LeadLiveBadge({ handle, refreshMs = 20000 }: Props) { // Alle 20 Sekunden checken
+export default function LeadLiveBadge({ handle, refreshMs = 30000 }: Props) {
   const [status, setStatus] = React.useState<'loading' | 'Live' | 'Offline'>('loading');
 
   React.useEffect(() => {
@@ -21,12 +21,13 @@ export default function LeadLiveBadge({ handle, refreshMs = 20000 }: Props) { //
     const check = async () => {
       try {
         const res = await fetch(`/api/livecheck?handle=${encodeURIComponent(handle)}`, { cache: 'no-store' });
-        if (!res.ok) throw new Error();
+        if (!res.ok) throw new Error('API error');
         const data = await res.json();
         if (!cancelled) {
           setStatus(data.isLive ? 'Live' : 'Offline');
         }
-      } catch {
+      } catch (err) {
+        console.error('Live check failed for', handle, err);
         if (!cancelled) setStatus('Offline');
       }
     };
@@ -40,13 +41,11 @@ export default function LeadLiveBadge({ handle, refreshMs = 20000 }: Props) { //
     };
   }, [handle, refreshMs]);
 
-  // FESTE GRÖSSE = KEIN VERRUTSCHEN MEHR!
+  // Feste Größe → kein Verrutschen + immer sichtbar
   return (
-    <div className="w-24 min-w-[96px] h-9 flex items-center justify-center">
+    <div className="w-24 h-9 flex items-center justify-center">
       {status === 'loading' && (
-        <span className="text-xs px-3 py-1 rounded-full bg-yellow-100 text-yellow-800">
-          Prüfe...
-        </span>
+        <span className="text-xs px-3 py-1 rounded-full bg-yellow-100 text-yellow-800">Prüfe...</span>
       )}
       {status === 'Live' && (
         <span className="text-xs px-3 py-1 rounded-full bg-green-600 text-white font-bold animate-pulse">
