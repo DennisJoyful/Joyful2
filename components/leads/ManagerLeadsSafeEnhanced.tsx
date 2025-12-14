@@ -1,17 +1,131 @@
 /* Joyful3/components/leads/ManagerLeadsSafeEnhanced.tsx
- * Small tweak: ensure Live badge cell cannot be truncated and remains the 2nd column.
- * (Assumes the rest of your file is unchanged. Only the Live <td> line matters.)
- * If your file differs, keep your existing file and only adjust the indicated <td>.
+ * Fix: provide **default export** + named `BaseLead` type
+ * Behavior:
+ * - Live badge is the 2nd column (after Handle)
+ * - Source is shown when present; never forced to 'unknown'
+ * - Extras (if fetched elsewhere) should not overwrite with null/undefined (handled outside)
  */
 "use client"
-import React from "react"
+
+import React, { useEffect, useState } from "react"
 import LeadLiveBadge from "@/components/LeadLiveBadge"
-// This is a helper snippet to illustrate the correct cell:
-// In your real file, ensure the second <td> of each row looks like this:
-export function __LiveCellExample({ handle }: { handle?: string | null }) {
+import LeadStatusSelect from "@/components/LeadStatusSelect"
+import { Badge } from "@/components/ui/badge"
+
+export type BaseLead = {
+  id: string
+  handle?: string | null
+  status?: string | null
+  source?: string | null
+  contact_date?: string | null
+  follow_up_date?: string | null
+  follow_up_at?: string | null
+  created_at?: string | null
+  archived_at?: string | null
+  [key: string]: any
+}
+
+type Props = { baseRows: BaseLead[] }
+
+export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
+  // render what we got; do NOT hide rows
+  const [rows, setRows] = useState<BaseLead[]>(() =>
+    (baseRows ?? []).map((r) => ({ ...r, handle: r.handle ?? null, source: r.source ?? null }))
+  )
+
+  useEffect(() => {
+    setRows((baseRows ?? []).map((r) => ({ ...r, handle: r.handle ?? null, source: r.source ?? null })))
+  }, [baseRows])
+
+  const fmt = (d?: string | null) => {
+    if (!d) return "—"
+    const dt = new Date(d)
+    return isNaN(dt.getTime()) ? "—" : dt.toLocaleString()
+  }
+
   return (
-    <td className="px-3 py-2 whitespace-nowrap">
-      <LeadLiveBadge handle={handle ?? ""} refreshMs={15000} />
-    </td>
+    <div className="overflow-x-auto rounded-lg border">
+      <table className="min-w-full text-sm">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-3 py-2 text-left font-medium">Handle</th>
+            <th className="px-3 py-2 text-left font-medium">Live</th>
+            <th className="px-3 py-2 text-left font-medium">Lead-Status</th>
+            <th className="px-3 py-2 text-left font-medium">Quelle</th>
+            <th className="px-3 py-2 text-left font-medium">Kontakt</th>
+            <th className="px-3 py-2 text-left font-medium">Follow-Up (Date)</th>
+            <th className="px-3 py-2 text-left font-medium">Follow-Up (At)</th>
+            <th className="px-3 py-2 text-left font-medium">Angelegt</th>
+            <th className="px-3 py-2 text-left font-medium">Details</th>
+            <th className="px-3 py-2 text-left font-medium">Aktionen</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {rows.map((l) => (
+            <tr key={l.id}>
+              {/* 1) HANDLE */}
+              <td className="px-3 py-2">
+                {l.handle ? (
+                  <a
+                    href={`https://www.tiktok.com/@${l.handle}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-600 hover:underline"
+                  >
+                    @{l.handle}
+                  </a>
+                ) : (
+                  "—"
+                )}
+              </td>
+
+              {/* 2) LIVE */}
+              <td className="px-3 py-2 whitespace-nowrap">
+                <LeadLiveBadge handle={l.handle ?? ""} refreshMs={15000} />
+              </td>
+
+              {/* 3) LEAD-STATUS */}
+              <td className="px-3 py-2">
+                <LeadStatusSelect id={l.id} initial={l.status ?? "new"} />
+              </td>
+
+              {/* 4) QUELLE */}
+              <td className="px-3 py-2 whitespace-nowrap">
+                <Badge>{l.source ?? "—"}</Badge>
+              </td>
+
+              {/* 5) KONTAKT */}
+              <td className="px-3 py-2 whitespace-nowrap">{fmt(l.contact_date)}</td>
+
+              {/* 6) FOLLOW-UP (Date) */}
+              <td className="px-3 py-2 whitespace-nowrap">{fmt(l.follow_up_date)}</td>
+
+              {/* 7) FOLLOW-UP (At) */}
+              <td className="px-3 py-2 whitespace-nowrap">{fmt(l.follow_up_at)}</td>
+
+              {/* 8) ANGELEGT */}
+              <td className="px-3 py-2 whitespace-nowrap">{fmt(l.created_at)}</td>
+
+              {/* 9) DETAILS */}
+              <td className="px-3 py-2">
+                <span className="text-gray-500">Details</span>
+              </td>
+
+              {/* 10) AKTIONEN */}
+              <td className="px-3 py-2">
+                <span className="text-gray-500">Aktionen</span>
+              </td>
+            </tr>
+          ))}
+          {rows.length === 0 && (
+            <tr>
+              <td className="px-3 py-6 text-center text-gray-500" colSpan={10}>
+                Keine Leads gefunden.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
   )
 }
