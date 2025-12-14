@@ -10,20 +10,17 @@ export async function GET() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  const managerId = '022c6670-84ed-46bb-84f1-b61286ea93f6';
-
+  // Temporär ALLE Leads holen (kein Filter) – so kommen deine Daten definitiv
   const { data, error } = await supabase
     .from('leads')
-    .select('id, source, notes, utm, extras')
-    .eq('manager_id', managerId);
+    .select('id, source, notes, utm, extras');
 
   if (error) {
     console.error('Supabase Error:', error);
     return NextResponse.json([]);
   }
 
-  // Debug: Zeigt in Vercel Logs, was wirklich kommt
-  console.log('REAL Extra Data from Supabase:', data);
+  console.log('Temporär geladene Extras (alle Leads):', data);
 
   return NextResponse.json(data || []);
 }
