@@ -1,64 +1,48 @@
 'use client'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { useEffect, useState } from 'react'
+type Props = {
+  handle: string | null | undefined
+  refreshMs?: number
+}
 
-type Props = { handle?: string | null; refreshMs?: number }
+// Always shows a pill: defaults to OFFLINE, switches to LIVE if API returns isLive=true.
+// Resilient: on error it stays OFFLINE and retries on interval.
+export default function LeadLiveBadge({ handle, refreshMs = 15000 }: Props) {
+  const h = (handle || '').replace(/^@/, '').trim()
+  const [isLive, setIsLive] = useState(false)
+  const [ready, setReady] = useState(false)
+  const timer = useRef<any>(null)
 
-export default function LeadLiveBadge({ handle, refreshMs = 60000 }: Props) {
-  const [state, setState] = useState<'live' | 'offline'>('offline') // Default: offline
+  const fetchOnce = async () => {
+    if (!h) { setReady(true); setIsLive(false); return }
+    try {
+      const res = await fetch(`/api/livecheck?handle=${encodeURIComponent(h)}`, { cache: 'no-store' })
+      if (!res.ok) throw new Error('livecheck failed')
+      const data = await res.json()
+      const live = !!(data?.isLive || data?.live || data?.status === 'live' || data?.statusText === 'Live')
+      setIsLive(live)
+    } catch (_e) {
+      setIsLive(false) // default to offline on error
+    } finally {
+      setReady(true)
+    }
+  }
 
   useEffect(() => {
-    // Wenn kein Handle oder leer → direkt offline
-    if (!handle || handle.trim() === '') {
-      setState('offline')
-      return
-    }
+    fetchOnce()
+    if (timer.current) clearInterval(timer.current)
+    timer.current = setInterval(fetchOnce, Math.max(5000, refreshMs))
+    return () => { if (timer.current) clearInterval(timer.current) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [h, refreshMs])
 
-    const trimmedHandle = handle.trim()
+  const cls = useMemo(() => isLive ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-700', [isLive])
+  const label = isLive ? 'LIVE' : 'OFFLINE'
 
-    let cancelled = false
-    let timeoutId: NodeJS.Timeout
-
-    async function probe() {
-      try {
-        // encodeURIComponent nur mit sicherem String aufrufen
-        const res = await fetch(`/api/livecheck?handle=${encodeURIComponent(trimmedHandle)}`, { cache: 'no-store' })
-        const json = await res.json().catch(() => ({}))
-
-        let newState: 'live' | 'offline' = 'offline'
-
-        // API-Response prüfen: isLive oder statusText
-        if (json?.isLive === true || json?.statusText === 'Live') {
-          newState = 'live'
-        } else if (json?.isLive === false || json?.statusText === 'Offline') {
-          newState = 'offline'
-        }
-
-        if (!cancelled) setState(newState)
-      } catch (err) {
-        console.error('Livecheck failed for', trimmedHandle, err)
-        if (!cancelled) setState('offline')
-      } finally {
-        if (!cancelled && refreshMs > 0) {
-          timeoutId = setTimeout(probe, refreshMs)
-        }
-      }
-    }
-
-    probe()
-
-    return () => {
-      cancelled = true
-      if (timeoutId) clearTimeout(timeoutId)
-    }
-  }, [handle, refreshMs])
-
-  const color = state === 'live' ? 'bg-green-500' : 'bg-gray-400'
-  const label = state === 'live' ? 'LIVE' : 'offline'
-
+  // Always render a pill; when no handle, still shows OFFLINE so the column is never empty.
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${color} text-white`}>
-      {state === 'live' && <span className="h-2 w-2 rounded-full bg-white/90 animate-pulse"></span>}
+    <span className={`ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>
       {label}
     </span>
   )
