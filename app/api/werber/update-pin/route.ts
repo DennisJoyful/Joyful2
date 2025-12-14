@@ -33,24 +33,23 @@ export async function POST(req: Request){
     const { data: prof } = await admin.from('profiles').select('role, manager_id').eq('user_id', user.id).maybeSingle()
     if(!prof || prof.role!=='manager' || !prof.manager_id) return NextResponse.json({ error: 'Nur Manager dürfen PINs setzen' }, { status: 403 })
 
-    // check that column pin_hash exists
-    const { data: cols } = await admin
-      .from('information_schema.columns' as any)
-      .select('column_name')
-      .eq('table_schema', 'public')
-      .eq('table_name', 'werber')
-    const hasPinHash = Array.isArray(cols) && cols.some((c:any)=>c.column_name==='pin_hash')
-    if (!hasPinHash) return NextResponse.json({ error: "Spalte 'pin_hash' fehlt in 'werber' (Migration ausführen)." }, { status: 400 })
-
     const pin_hash = await hashPin(pin)
 
+    // Versuche direkt zu updaten; wenn Spalte fehlt, kommt ein eindeutiger DB-Fehler zurück
     const { error: upErr } = await admin
       .from('werber')
       .update({ pin_hash })
       .eq('id', id)
       .eq('manager_id', prof.manager_id)
 
-    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 400 })
+    if (upErr) {
+      // 42703 = undefined_column
+      if ((upErr as any).code === '42703' || /column .*pin_hash.* does not exist/i.test(upErr.message || '')) {
+        return NextResponse.json({ error: "Spalte 'pin_hash' fehlt in 'werber'. Bitte Migration ausführen und erneut versuchen." }, { status: 400 })
+      }
+      return NextResponse.json({ error: upErr.message }, { status: 400 })
+    }
+
     return NextResponse.json({ ok: true })
   } catch (e:any) {
     return NextResponse.json({ error: e?.message || String(e) }, { status: 500 })
