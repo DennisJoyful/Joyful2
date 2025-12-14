@@ -53,10 +53,15 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
     setLoadingExtras(true);
     try {
       const res = await fetch('/api/manager/leads/extra', { cache: 'no-store' });
+      console.log('API Response Status:', res.status); // Debug: Status checken
       if (res.ok) {
         const extras: ExtraLead[] = await res.json();
+        console.log('Geladene Extras:', extras); // Debug: Sieh, was zurückkommt (inkl. source)
         const map = new Map(extras.map((e: ExtraLead) => [e.id, e]));
         setRows(prev => prev.map(b => ({ ...b, ...(map.get(b.id) || {}) })));
+        console.log('Upgedatete Rows:', rows); // Debug: Nach Merge
+      } else {
+        console.error('API Fehler:', res.statusText);
       }
     } catch (error) {
       console.error('Fehler beim Aktualisieren der Quellen:', error);
