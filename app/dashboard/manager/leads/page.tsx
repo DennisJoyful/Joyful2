@@ -13,29 +13,46 @@ export default async function Page() {
   const uid = me?.user?.id
   if (!uid) redirect('/auth/sign-in?next=/dashboard/manager/leads')
 
-  // 2) Fetch profile to know which manager this user belongs to
-  const { data: prof, error: profErr } = await s
+  // 2) Try to resolve manager_id in a robust way:
+  //    a) profiles.manager_id (if present)
+  //    b) fallback: managers.id via managers.user_id === uid
+  let managerId: string | null = null
+
+  const { data: prof } = await s
     .from('profiles')
     .select('manager_id')
     .eq('user_id', uid)
     .single()
 
-  if (profErr || !prof?.manager_id) {
-    // No manager bound -> show empty state (keeps UI unchanged elsewhere)
+  if (prof?.manager_id) {
+    managerId = prof.manager_id
+  } else {
+    const { data: mgrByUser } = await s
+      .from('managers')
+      .select('id')
+      .eq('user_id', uid)
+      .maybeSingle()
+    managerId = mgrByUser?.id ?? null
+  }
+
+  if (!managerId) {
     return (
       <div className="p-6">
         <h1 className="text-2xl font-semibold">Leads</h1>
-        <p className="text-sm text-muted-foreground mt-2">Kein Manager zugeordnet.</p>
+        <p className="text-sm text-muted-foreground mt-2">
+          Kein Manager zugeordnet. Bitte dem Nutzer einen Manager zuweisen
+          (profiles.manager_id) oder den Nutzer als Manager (managers.user_id) anlegen.
+        </p>
       </div>
     )
   }
 
-  // 3) Load leads filtered by this manager_id (server-side)
+  // 3) Load leads filtered by this manager_id (server-side, no caching)
   const admin = getAdminClient()
   const { data: rowsRaw } = await admin
     .from('leads')
     .select('id, handle, status, lead_source, notes, utm, extras, created_at, follow_up_at, follow_up_date')
-    .eq('manager_id', prof.manager_id)
+    .eq('manager_id', managerId)
     .order('created_at', { ascending: false })
 
   const rows: LeadRow[] = (rowsRaw ?? []).map((r: any) => ({
