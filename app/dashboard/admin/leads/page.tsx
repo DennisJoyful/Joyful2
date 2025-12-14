@@ -6,36 +6,23 @@ import { redirect } from 'next/navigation'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-export default async function Page() {
-  // 1) Require a session
+export default async function Page({ searchParams }: { searchParams: { m?: string } }) {
   const s = supabaseServer()
   const { data: me } = await s.auth.getUser()
   const uid = me?.user?.id
-  if (!uid) redirect('/auth/sign-in?next=/dashboard/manager/leads')
+  if (!uid) redirect('/auth/sign-in?next=/dashboard/admin/leads')
 
-  // 2) Fetch profile to know which manager this user belongs to
-  const { data: prof, error: profErr } = await s
-    .from('profiles')
-    .select('manager_id')
-    .eq('user_id', uid)
-    .single()
+  const { data: prof } = await s.from('profiles').select('role').eq('user_id', uid).single()
+  if (prof?.role !== 'admin') redirect('/')
 
-  if (profErr || !prof?.manager_id) {
-    // No manager bound -> show empty state (keeps UI unchanged elsewhere)
-    return (
-      <div className="p-6">
-        <h1 className="text-2xl font-semibold">Leads</h1>
-        <p className="text-sm text-muted-foreground mt-2">Kein Manager zugeordnet.</p>
-      </div>
-    )
-  }
-
-  // 3) Load leads filtered by this manager_id (server-side)
   const admin = getAdminClient()
+  const { data: managers } = await admin.from('managers').select('id, slug').order('slug')
+  const activeManagerId = searchParams.m || managers?.[0]?.id
+
   const { data: rowsRaw } = await admin
     .from('leads')
     .select('id, handle, status, lead_source, notes, utm, extras, created_at, follow_up_at, follow_up_date')
-    .eq('manager_id', prof.manager_id)
+    .eq('manager_id', activeManagerId)
     .order('created_at', { ascending: false })
 
   const rows: LeadRow[] = (rowsRaw ?? []).map((r: any) => ({
@@ -53,8 +40,22 @@ export default async function Page() {
 
   return (
     <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Leads</h1>
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-semibold">Leads (Admin)</h1>
+        <form>
+          <select
+            name="m"
+            defaultValue={activeManagerId}
+            className="border rounded-md px-2 py-1"
+            onChange={(e) => (window.location.search = '?m=' + e.target.value)}
+          >
+            {(managers ?? []).map((m: any) => (
+              <option key={m.id} value={m.id}>
+                {m.slug}
+              </option>
+            ))}
+          </select>
+        </form>
       </div>
       <LeadsTable rows={rows} />
     </div>
