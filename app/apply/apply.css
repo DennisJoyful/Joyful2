@@ -1,0 +1,17 @@
+/* app/apply/apply.css  — applies only to /apply/* via layout import */
+.apply-route .fouc-guard {
+  opacity: 0;
+  transition: opacity .12s linear;
+}
+html.hydrated .apply-route .fouc-guard {
+  opacity: 1;
+}
+.apply-route img[alt~="Logo" i] {
+  max-height: 40px;
+  width: auto;
+  height: auto;
+}
+.apply-route .container, .apply-route .max-w-3xl, .apply-route .max-w-4xl {
+  margin-left: auto;
+  margin-right: auto;
+}
