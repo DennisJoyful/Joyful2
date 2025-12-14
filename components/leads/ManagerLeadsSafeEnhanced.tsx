@@ -229,10 +229,10 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
                 </td>
                 <td className="px-3 py-2">{l.follow_up_date || '—'}</td>
                 <td className="px-3 py-2">
-                  {mounted ? formatDate(l.follow_up_at) : '—'} {/* Hydration-Fix */}
+                  {mounted ? formatDate(l.follow_up_at ?? null) : '—'}
                 </td>
                 <td className="px-3 py-2">
-                  {mounted ? formatDate(l.created_at) : '—'} {/* Hydration-Fix */}
+                  {mounted ? formatDate(l.created_at ?? null) : '—'}
                 </td>
                 <td className="px-3 py-2">
                   <details>
