@@ -1,4 +1,4 @@
-// app/api/admin/managers/create/route.ts
+// app/api/admin/managers/create/route.ts (patched to also upsert profiles.manager_id)
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
@@ -14,86 +14,63 @@ type Payload = {
 };
 
 async function findUserIdByEmail(email: string): Promise<string | null> {
-  let page = 1;
-  const perPage = 1000;
-  while (page <= 10) {
-    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage });
-    if (error) break;
-    const found = data.users.find(u => (u.email || '').toLowerCase() === email.toLowerCase());
-    if (found) return found.id;
-    if (data.users.length < perPage) break;
-    page++;
-  }
-  return null;
-}
-
-function genPassword(len=14){
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$%*?-_';
-  let out = '';
-  for (let i=0;i<len;i++) out += chars[Math.floor(Math.random()*chars.length)];
-  return out;
+  const { data, error } = await supabase.auth.admin.listUsers();
+  if (error) throw new Error(error.message);
+  const user = (data?.users || []).find(u => String(u.email).toLowerCase() === email.toLowerCase());
+  return user?.id || null;
 }
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json() as Payload;
-    const email = (body.email||'').trim().toLowerCase();
-    if (!email) return NextResponse.json({ error: 'E-Mail erforderlich' }, { status: 400 });
+    const body = (await req.json()) as Payload;
+    const email = body.email?.trim();
+    const name = body.name?.trim() || email?.split('@')[0];
+    const slug = body.slug?.trim();
+    const password = body.password?.trim();
+    if (!email || !slug) return NextResponse.json({ error: 'email & slug required' }, { status: 400 });
 
-    const name = (body.name||'').trim() || email.split('@')[0];
-    const slug = (body.slug||'').trim().toLowerCase() || email.split('@')[0].replace(/[^a-z0-9-]/g,'-');
-    const password = (body.password||'').trim() || genPassword();
-
-    // 1) Create/find auth user and set role metadata
-    let userId: string | null = null;
-    const created = await supabase.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: { name, role: 'manager' },
-      app_metadata: { role: 'manager' }
-    });
-
-    if (created.error) {
-      const existingId = await findUserIdByEmail(email);
-      if (!existingId) {
-        return NextResponse.json({ error: 'Auth-User konnte nicht angelegt oder gefunden werden: '+created.error.message }, { status: 400 });
-      }
-      userId = existingId;
-      await supabase.auth.admin.updateUserById(userId, { app_metadata: { role: 'manager' }, user_metadata: { name } });
-    } else {
-      userId = created.data.user?.id || null;
+    // 1) ensure user
+    let userId = await findUserIdByEmail(email);
+    if (!userId) {
+      const { data, error } = await supabase.auth.admin.createUser({
+        email,
+        password: password || Math.random().toString(36).slice(2) + 'A!1',
+        email_confirm: true,
+      });
+      if (error || !data?.user) return NextResponse.json({ error: error?.message || 'create user failed' }, { status: 400 });
+      userId = data.user.id;
     }
-    if (!userId) return NextResponse.json({ error: 'Keine user_id erhalten' }, { status: 400 });
 
-    // 2) Ensure profiles row exists (profiles: user_id, role, manager_id, created_at)
-    //    - upsert on user_id if possible; otherwise try insert then update
-    // Try select
-    const { data: profSel } = await supabase.from('profiles').select('user_id, role, manager_id').eq('user_id', userId).maybeSingle();
-    if (!profSel) {
-      const { error: profInsErr } = await supabase.from('profiles').insert({ user_id: userId, role: 'manager', manager_id: null });
-      if (profInsErr) {
-        // If insert fails due to constraint mismatch, try update fallback
-        const { error: profUpErr } = await supabase.from('profiles').update({ role: 'manager' }).eq('user_id', userId);
-        if (profUpErr) {
-          return NextResponse.json({ error: 'Profiles-Anlage fehlgeschlagen: '+(profInsErr.message || profUpErr.message) }, { status: 400 });
-        }
-      }
+    // 2) upsert manager
+    const { data: mgr, error: mErr } = await supabase
+      .from('managers')
+      .upsert({ user_id: userId, name, slug } as any, { onConflict: 'user_id' } as any)
+      .select('id,user_id')
+      .single();
+    if (mErr || !mgr) return NextResponse.json({ error: 'Manager upsert failed: ' + (mErr?.message || 'unknown') }, { status: 400 });
+
+    // 3) ensure profiles row with role=manager and manager_id set
+    const { data: prof, error: pErr } = await supabase
+      .from('profiles')
+      .select('user_id, role, manager_id')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (pErr) return NextResponse.json({ error: 'Profiles read failed: ' + pErr.message }, { status: 400 });
+
+    if (!prof) {
+      const { error: insErr } = await supabase.from('profiles').insert({ user_id: userId, role: 'manager', manager_id: mgr.id } as any);
+      if (insErr) return NextResponse.json({ error: 'Profiles insert failed: ' + insErr.message }, { status: 400 });
     } else {
-      // ensure role is manager
-      if (profSel.role !== 'manager') {
-        await supabase.from('profiles').update({ role: 'manager' }).eq('user_id', userId);
+      const updates: any = {};
+      if (prof.role !== 'manager') updates.role = 'manager';
+      if (!prof.manager_id) updates.manager_id = mgr.id;
+      if (Object.keys(updates).length) {
+        const { error: upErr } = await supabase.from('profiles').update(updates).eq('user_id', userId);
+        if (upErr) return NextResponse.json({ error: 'Profiles update failed: ' + upErr.message }, { status: 400 });
       }
     }
 
-    // 3) Upsert into managers (requires user_id PK/UNIQUE; ensure via DB schema)
-    const { error: mErr } = await supabase.from('managers').upsert(
-      { user_id: userId, name, slug } as any,
-      { onConflict: 'user_id' } as any
-    );
-    if (mErr) return NextResponse.json({ error: 'Manager-DB-Anlage fehlgeschlagen: '+mErr.message }, { status: 400 });
-
-    return NextResponse.json({ ok: true, user_id: userId, email, name, slug });
+    return NextResponse.json({ ok: true, user_id: userId, email, name, slug, manager_id: mgr.id });
   } catch (e:any) {
     return NextResponse.json({ error: e?.message || 'unexpected' }, { status: 500 });
   }
