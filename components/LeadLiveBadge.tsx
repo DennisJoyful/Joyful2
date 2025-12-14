@@ -1,64 +1,51 @@
-'use client'
+/* components/LeadLiveBadge.tsx
+ * Lightweight badge that polls /api/livecheck?handle=...
+ */
+"use client"
 
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from "react"
 
-type Props = { handle?: string | null; refreshMs?: number }
+type LiveResp = {
+  success: boolean
+  handle: string
+  isLive: boolean
+  statusText?: string
+}
 
-export default function LeadLiveBadge({ handle, refreshMs = 60000 }: Props) {
-  const [state, setState] = useState<'live' | 'offline'>('offline') // Default: offline
+export default function LeadLiveBadge({ handle, refreshMs = 15000 }: { handle: string; refreshMs?: number }) {
+  const [state, setState] = useState<LiveResp | null>(null)
+
+  async function load() {
+    if (!handle) return
+    try {
+      const res = await fetch(`/api/livecheck?handle=${encodeURIComponent(handle)}`, { cache: "no-store" })
+      const json = (await res.json()) as LiveResp
+      setState(json)
+    } catch (e) {
+      // network errors shouldn't crash the row
+      setState({ success: false, handle, isLive: false, statusText: "Offline" })
+    }
+  }
 
   useEffect(() => {
-    // Wenn kein Handle oder leer → direkt offline
-    if (!handle || handle.trim() === '') {
-      setState('offline')
-      return
-    }
+    load()
+    const t = setInterval(load, refreshMs)
+    return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handle])
 
-    const trimmedHandle = handle.trim()
-
-    let cancelled = false
-    let timeoutId: NodeJS.Timeout
-
-    async function probe() {
-      try {
-        // encodeURIComponent nur mit sicherem String aufrufen
-        const res = await fetch(`/api/livecheck?handle=${encodeURIComponent(trimmedHandle)}`, { cache: 'no-store' })
-        const json = await res.json().catch(() => ({}))
-
-        let newState: 'live' | 'offline' = 'offline'
-
-        // API-Response prüfen: isLive oder statusText
-        if (json?.isLive === true || json?.statusText === 'Live') {
-          newState = 'live'
-        } else if (json?.isLive === false || json?.statusText === 'Offline') {
-          newState = 'offline'
-        }
-
-        if (!cancelled) setState(newState)
-      } catch (err) {
-        console.error('Livecheck failed for', trimmedHandle, err)
-        if (!cancelled) setState('offline')
-      } finally {
-        if (!cancelled && refreshMs > 0) {
-          timeoutId = setTimeout(probe, refreshMs)
-        }
-      }
-    }
-
-    probe()
-
-    return () => {
-      cancelled = true
-      if (timeoutId) clearTimeout(timeoutId)
-    }
-  }, [handle, refreshMs])
-
-  const color = state === 'live' ? 'bg-green-500' : 'bg-gray-400'
-  const label = state === 'live' ? 'LIVE' : 'OFFLINE'
+  const isLive = !!state?.isLive
+  const label = isLive ? "LIVE" : "OFFLINE"
 
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${color} text-white`}>
-      {state === 'live' && <span className="h-2 w-2 rounded-full bg-white/90 animate-pulse"></span>}
+    <span
+      className={
+        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset " +
+        (isLive
+          ? "bg-red-100 text-red-700 ring-red-200"
+          : "bg-gray-100 text-gray-700 ring-gray-200")
+      }
+    >
       {label}
     </span>
   )
