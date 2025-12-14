@@ -178,7 +178,7 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
                 <td className="px-3 py-2">
                   {l.handle ? <a className="text-blue-600 hover:underline" href={`https://www.tiktok.com/@${l.handle}`} target="_blank" rel="noreferrer">@{l.handle}</a> : '—'}
                 </td>
-                <td className="px-3 py-2 whitespace-nowrap"><LeadLiveBadge handle={l.handle ?? ''} refreshMs={15000} /></td>
+                <td className="whitespace-nowrap px-3 py-2"><LeadLiveBadge handle={l.handle ?? ''} /></td>
                 <td className="px-3 py-2"><LeadStatusSelect id={l.id} value={l.status ?? 'new'} /></td>
                 <td className="px-3 py-2"><Badge>{l.source || '—'}</Badge></td>
                 <td className="px-3 py-2">
