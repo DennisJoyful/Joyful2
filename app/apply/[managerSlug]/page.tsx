@@ -1,20 +1,28 @@
 // app/apply/[managerSlug]/page.tsx
-import FormHeader from '@/components/forms/FormHeader'
-import ManagerApplyForm from '@/components/forms/ManagerApplyForm'
-import { supabaseServer } from '@/lib/supabaseServer'
+'use client'
+import React from 'react'
 
-export default async function Page({ params }:{ params:{ managerSlug:string } }){
-  const s = supabaseServer();
-  const { data: m } = await s.from('managers').select('slug, brand_color').eq('slug', params.managerSlug).single();
-  const brand = m?.brand_color || '#111111';
-  const managerSlug = m?.slug || params.managerSlug;
+export default function ManagerApplyPage({ params }: { params: { managerSlug: string } }){
+  const { managerSlug } = params
+  const [hydrated, setHydrated] = React.useState(false)
+  React.useEffect(()=>{ setHydrated(true) }, [])
 
   return (
-    <main style={{ minHeight:'80vh', background: 'radial-gradient(1000px 400px at 80% 10%, rgba(37,99,235,.10), transparent)' }}>
-      <div style={{ maxWidth: 760, margin: '2rem auto', borderRadius: 16, background: '#fff', overflow:'hidden', boxShadow: '0 20px 40px rgba(0,0,0,.08)' }}>
-        <FormHeader title="Joyful Agency – Manager Bewerbung" subtitle={`Manager: ${managerSlug}`} brandColor={brand} />
-        <ManagerApplyForm managerSlug={managerSlug} />
+    <div className={"min-h-screen bg-white text-gray-900 " + (hydrated ? "" : "opacity-0")}>
+      <div className="max-w-3xl mx-auto p-6 space-y-6">
+        <header className="space-y-1">
+          <div className="flex items-center gap-3">
+            <img src="/logo.svg" alt="Logo" className="h-10 w-auto max-w-[160px]" />
+            <div>
+              <h1 className="text-2xl font-semibold">Bewerbungsformular</h1>
+              <div className="text-sm text-gray-600">Manager: <span className="font-medium">{managerSlug}</span></div>
+            </div>
+          </div>
+        </header>
+        <div className="p-6 rounded-2xl border bg-gray-50">
+          <p>Hier kommt das Manager-Formular für <span className="font-medium">{managerSlug}</span>.</p>
+        </div>
       </div>
-    </main>
-  );
+    </div>
+  )
 }

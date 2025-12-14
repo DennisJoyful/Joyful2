@@ -1,22 +1,21 @@
 // app/sws/[werberSlug]/page.tsx
-import FormHeader from '@/components/forms/FormHeader';
-import SwsApplyForm from '@/components/forms/SwsApplyForm';
-import { supabaseServer } from '@/lib/supabaseServer';
+import React from 'react'
 
-export default async function Page({ params }:{ params:{ werberSlug:string } }){
-  const s = supabaseServer();
-  const { data: w } = await s.from('werber').select('manager_id').eq('slug', params.werberSlug).single();
-  const { data: m } = w ? await s.from('managers').select('slug, brand_color').eq('id', w.manager_id).single() : { data: null };
-
-  const brand = m?.brand_color || '#111111';
-  const managerSlug = m?.slug || '…';
-
+export default function SWSApplyPage({ params }: { params: { werberSlug: string } }){
+  const { werberSlug } = params
   return (
-    <main style={{ minHeight:'80vh', background: 'radial-gradient(1000px 400px at 20% 0%, rgba(124,58,237,.10), transparent), radial-gradient(1000px 400px at 80% 10%, rgba(37,99,235,.10), transparent)' }}>
-      <div style={{ maxWidth: 760, margin: '2rem auto', borderRadius: 20, overflow:'hidden', boxShadow: '0 20px 40px rgba(0,0,0,.08)' }}>
-        <FormHeader title="Joyful Agency – SWS Bewerbung" subtitle={`Werber: ${params.werberSlug} · Manager: ${managerSlug}`} brandColor={brand} />
-        <SwsApplyForm werberSlug={params.werberSlug} />
+    <div className="min-h-screen bg-white text-gray-900">
+      <div className="max-w-3xl mx-auto p-6 space-y-6">
+        <header className="space-y-1">
+          <h1 className="text-2xl font-semibold">Bewerbungsformular</h1>
+          <div className="text-sm text-gray-600">
+            Werber: <span className="font-medium">{werberSlug}</span>
+          </div>
+        </header>
+        <div className="p-6 rounded-2xl border bg-gray-50">
+          <p>Hier kommt das SWS Formular für <span className="font-medium">{werberSlug}</span>.</p>
+        </div>
       </div>
-    </main>
-  );
+    </div>
+  )
 }
