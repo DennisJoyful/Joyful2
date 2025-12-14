@@ -1,32 +1,29 @@
 // app/api/manager/leads/extra/route.ts
-import { NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabaseAdmin'  // service role: bypass RLS reliably
+import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from 'next/server';
 
-export const dynamic = 'force-dynamic'
+export const dynamic = 'force-dynamic'; // Immer frisch, kein Cache
 
 export async function GET() {
-  // Always use service role for this admin-only, server-side API to avoid RLS surprises.
-  // Read exactly the column name 'source' (enum lead_source) plus optional notes/utm/extras.
-  const selects = [
-    'id, source, notes, utm, extras',
-    'id, source, notes, utm',
-    'id, source'
-  ] as const
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
-  for (const sel of selects) {
-    const { data, error } = await supabaseAdmin.from('leads').select(sel).is('archived_at', null)
-    if (!error && Array.isArray(data)) {
-      const out = data.map((r: any) => ({
-        id: r.id,
-        source: r.source ?? null,
-        notes: r.notes ?? null,
-        utm: r.utm ?? null,
-        extras: r.extras ?? null
-      }))
-      return NextResponse.json(out, { status: 200, headers: { 'Cache-Control': 'no-store' } })
-    }
+  // Hole alle Leads für deinen Manager (passe manager_id an, wenn nötig)
+  const managerId = '022c6670-84ed-46bb-84f1-b61286ea93f6'; // Deine ID aus SQL
+
+  const { data, error } = await supabase
+    .from('leads')
+    .select('id, source, notes, utm, extras')
+    .eq('manager_id', managerId);
+
+  if (error) {
+    console.error('Supabase Error:', error);
+    return NextResponse.json([], { status: 500 });
   }
 
-  // If even the minimal select fails, return an empty array (non-blocking on the UI).
-  return NextResponse.json([], { status: 200, headers: { 'Cache-Control': 'no-store' } })
+  console.log('Geladene Extra-Daten:', data); // Sieht man in Vercel Logs
+
+  return NextResponse.json(data || []);
 }
