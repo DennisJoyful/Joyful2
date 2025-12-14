@@ -7,57 +7,37 @@ type Props = {
   refreshMs?: number;
 };
 
-export default function LeadLiveBadge({ handle, refreshMs = 15000 }: Props) {
+export default function LeadLiveBadge({ handle, refreshMs = 20000 }: Props) {
   const [status, setStatus] = React.useState<'loading' | 'Live' | 'Offline'>('loading');
 
   React.useEffect(() => {
-    if (!handle || handle === '') {
-      console.log('No handle for badge:', handle); // Debug
+    if (!handle) {
       setStatus('Offline');
       return;
     }
 
-    let cancelled = false;
-
-    const checkLive = async () => {
-      console.log('Checking live for:', handle); // Debug
+    const check = async () => {
       try {
         const res = await fetch(`/api/livecheck?handle=${encodeURIComponent(handle)}`, { cache: 'no-store' });
-        console.log('API Response for', handle, ':', res.status); // Debug
-        if (!res.ok) throw new Error(`Status: ${res.status}`);
         const data = await res.json();
-        console.log('API Data for', handle, ':', data); // Debug
-        if (!cancelled) {
-          setStatus(data.isLive ? 'Live' : 'Offline');
-        }
-      } catch (err) {
-        console.error('Live check error for', handle, ':', err);
-        if (!cancelled) setStatus('Offline');
+        console.log('Live API for', handle, ':', data); // Siehst du in Browser Console (F12)
+        setStatus(data.isLive ? 'Live' : 'Offline');
+      } catch {
+        setStatus('Offline');
       }
     };
 
-    checkLive();
-    const interval = setInterval(checkLive, refreshMs);
+    check();
+    const interval = setInterval(check, refreshMs);
 
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
+    return () => clearInterval(interval);
   }, [handle, refreshMs]);
 
-  console.log('Rendering badge for', handle, 'with status:', status); // Debug
-
   return (
-    <div className="w-24 h-9 flex items-center justify-center whitespace-nowrap">
-      {status === 'loading' && (
-        <span className="text-xs px-3 py-1 rounded-full bg-yellow-100 text-yellow-800">Prüfe...</span>
-      )}
-      {status === 'Live' && (
-        <span className="text-xs px-3 py-1 rounded-full bg-green-600 text-white font-bold animate-pulse">● LIVE</span>
-      )}
-      {status === 'Offline' && (
-        <span className="text-xs px-3 py-1 rounded-full bg-gray-500 text-white">○ Offline</span>
-      )}
+    <div className="min-w-[100px] h-10 flex items-center justify-center bg-gray-100 rounded">
+      {status === 'loading' && <span className="text-sm">Prüfe...</span>}
+      {status === 'Live' && <span className="text-sm font-bold text-green-600">● LIVE</span>}
+      {status === 'Offline' && <span className="text-sm text-gray-600">○ Offline</span>}
     </div>
   );
 }

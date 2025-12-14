@@ -10,7 +10,6 @@ export async function GET() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Deine feste manager_id (genau wie in deiner SQL)
   const managerId = '022c6670-84ed-46bb-84f1-b61286ea93f6';
 
   const { data, error } = await supabase
@@ -22,6 +21,9 @@ export async function GET() {
     console.error('Supabase Error:', error);
     return NextResponse.json([]);
   }
+
+  // Debug: Zeigt in Vercel Logs, was wirklich kommt
+  console.log('REAL Extra Data from Supabase:', data);
 
   return NextResponse.json(data || []);
 }
