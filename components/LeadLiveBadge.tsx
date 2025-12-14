@@ -21,7 +21,6 @@ export default function LeadLiveBadge({ handle, refreshMs = 20000 }: Props) {
         const res = await fetch(`/api/livecheck?handle=${encodeURIComponent(handle)}`, { cache: 'no-store' });
         if (!res.ok) throw new Error();
         const data = await res.json();
-        console.log('Live API for', handle, ':', data); // Dein Log
         setStatus(data.isLive ? 'Live' : 'Offline');
       } catch {
         setStatus('Offline');
@@ -33,12 +32,11 @@ export default function LeadLiveBadge({ handle, refreshMs = 20000 }: Props) {
     return () => clearInterval(interval);
   }, [handle, refreshMs]);
 
-  // Feste Größe + immer sichtbar
   return (
-    <span className="inline-block w-20 text-center px-2 py-1 rounded-full text-xs font-bold bg-gray-100">
-      {status === 'loading' && 'Prüfe...'}
-      {status === 'Live' && <span className="text-white bg-green-600">● LIVE</span>}
-      {status === 'Offline' && <span className="text-white bg-gray-600">○ Offline</span>}
-    </span>
+    <div className="w-24 h-8 flex items-center justify-center">
+      {status === 'loading' && <span className="text-xs text-gray-500">Prüfe...</span>}
+      {status === 'Live' && <span className="text-xs font-bold text-white bg-green-600 px-3 py-1 rounded-full animate-pulse">● LIVE</span>}
+      {status === 'Offline' && <span className="text-xs font-bold text-white bg-gray-600 px-3 py-1 rounded-full">○ Offline</span>}
+    </div>
   );
 }
