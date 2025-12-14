@@ -1,10 +1,10 @@
-// app/dashboard/manager/leads/page.tsx — mirrors original manager page (UI & logic),
-// only addition: filter by current manager_id.
+// app/dashboard/manager/leads/page.tsx with optional debug (?debug=1)
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { supabaseServer } from '@/lib/supabaseServer'
 import ManagerLeadsSafeEnhanced, { BaseLead } from '@/components/leads/ManagerLeadsSafeEnhanced'
+import LeadLiveBadge from '@/components/LeadLiveBadge'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -21,33 +21,41 @@ async function getCurrentManagerId(): Promise<string | null> {
   return (mgr?.id as string) ?? null
 }
 
-async function fetchLegacyScoped(managerId: string): Promise<BaseLead[]> {
+async function fetchScoped(managerId: string): Promise<BaseLead[]> {
   const sb = getAdminClient()
-  const { data, error } = await sb
+  const { data } = await sb
     .from('leads')
     .select('id, handle, status, contact_date, follow_up_at, follow_up_date, created_at, archived_at')
     .eq('manager_id', managerId)
     .is('archived_at', null)
     .order('created_at', { ascending: false })
-  if (error) {
-    console.error('Leads-Select-Fehler:', error.message)
-    return []
-  }
   return (data ?? []) as BaseLead[]
 }
 
-export default async function ManagerLeadsPage() {
+export default async function ManagerLeadsPage({ searchParams }: { searchParams?: { debug?: string } }) {
   const managerId = await getCurrentManagerId()
   if (!managerId) {
     redirect('/auth/sign-in?next=/dashboard/manager/leads')
   }
-  const baseRows = await fetchLegacyScoped(managerId!)
+  const baseRows = await fetchScoped(managerId!)
+  const debug = searchParams?.debug === '1'
+  const first = baseRows.slice(0,3).map(r => r.handle || '—').join(', ')
+
   return (
     <div className="p-4 md:p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Leads</h1>
         <Link className="text-sm text-blue-600 hover:underline" href="/dashboard/manager/leads/create">Lead anlegen</Link>
       </div>
+
+      {debug && (
+        <div className="rounded-lg border p-3 text-xs">
+          <div><strong>Debug</strong></div>
+          <div>Handles (erste 3): {first}</div>
+          <div className="mt-1">Badge-Demo: <LeadLiveBadge handle={baseRows[0]?.handle || ''} refreshMs={5000} /></div>
+        </div>
+      )}
+
       <ManagerLeadsSafeEnhanced baseRows={baseRows} />
     </div>
   )
