@@ -2,11 +2,47 @@
 'use client';
 import React from 'react';
 
-type Werber = { id: string; slug?: string|null; name?: string|null; status?: string|null; pin_set?: boolean|null };
+type Werber = {
+  id: string;
+  slug?: string|null;
+  name?: string|null;
+  status?: string|null;
+  pin_set?: boolean|null;
+  created_at?: string|null;
+};
+
 type ListShape = { items?: Werber[] } | { data?: Werber[] } | { rows?: Werber[] } | { error?: string } | Werber[];
 
 function normSlug(v: string){
   return v.toLowerCase().trim().replace(/[^a-z0-9-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40);
+}
+function titleFromSlug(slug?: string|null){
+  if(!slug) return '—';
+  return slug.split('-').map(s=>s ? s[0].toUpperCase()+s.slice(1) : s).join(' ');
+}
+function coerceItems(data: ListShape): Werber[] {
+  if (Array.isArray(data)) return data as Werber[];
+  const anyData = data as any;
+  if (Array.isArray(anyData.items)) return anyData.items as Werber[];
+  if (Array.isArray(anyData.data)) return anyData.data as Werber[];
+  if (Array.isArray(anyData.rows)) return anyData.rows as Werber[];
+  return [];
+}
+function originSafe(){
+  if (typeof window === 'undefined') return '';
+  return window.location.origin;
+}
+function applyLink(slug?: string|null){
+  if(!slug) return '';
+  // bevorzugt Bewerbungsformular:
+  // Verwende ENV-basierte Pfade, wenn gesetzt, sonst sinnvolle Defaults
+  const base = process.env.NEXT_PUBLIC_APPLY_PATH || '/apply';
+  return originSafe() + `${base}?code=${encodeURIComponent(slug)}`;
+}
+function loginLink(slug?: string|null){
+  if(!slug) return '';
+  const base = process.env.NEXT_PUBLIC_WERBER_LOGIN_PATH || '/auth/werber';
+  return originSafe() + `${base}?code=${encodeURIComponent(slug)}`;
 }
 
 async function readErrorMessage(res: Response): Promise<string> {
@@ -18,17 +54,7 @@ async function readErrorMessage(res: Response): Promise<string> {
   } catch { return `${res.status} ${res.statusText}`; }
 }
 
-function coerceItems(data: ListShape): Werber[] {
-  if (Array.isArray(data)) return data as Werber[];
-  const anyData = data as any;
-  if (Array.isArray(anyData.items)) return anyData.items as Werber[];
-  if (Array.isArray(anyData.data)) return anyData.data as Werber[];
-  if (Array.isArray(anyData.rows)) return anyData.rows as Werber[];
-  return [];
-}
-
 async function fetchList(): Promise<Werber[]> {
-  // try primary route
   try {
     const res = await fetch('/api/werber/list?t=' + Date.now(), { cache:'no-store', credentials:'include' });
     if (res.ok) {
@@ -37,7 +63,6 @@ async function fetchList(): Promise<Werber[]> {
       if (items.length) return items;
     }
   } catch {}
-  // fallback route (service-role): list2
   try {
     const res = await fetch('/api/werber/list2?t=' + Date.now(), { cache:'no-store', credentials:'include' });
     if (res.ok) {
@@ -49,6 +74,19 @@ async function fetchList(): Promise<Werber[]> {
   return [];
 }
 
+function CopyBtn({ text }:{ text:string }){
+  const [ok,setOk]=React.useState(false);
+  return (
+    <button
+      className="px-2 py-1 border rounded text-xs"
+      onClick={async ()=>{ await navigator.clipboard.writeText(text); setOk(true); setTimeout(()=>setOk(false),1200);}}
+      title={text}
+    >
+      {ok ? 'Kopiert ✓' : 'Kopieren'}
+    </button>
+  )
+}
+
 export default function WerberManager(){
   const [list,setList]=React.useState<Werber[]>([]);
   const [loading,setLoading]=React.useState(true);
@@ -58,6 +96,23 @@ export default function WerberManager(){
   const [newName,setNewName]=React.useState('');
   const [newSlug,setNewSlug]=React.useState('');
   const [newPin,setNewPin]=React.useState('');
+
+  const [sortKey, setSortKey] = React.useState<'name'|'slug'|'created_at'>('created_at');
+  const [asc, setAsc] = React.useState(false);
+
+  function sortedRows(rows: Werber[]){
+    const r = [...rows];
+    r.sort((a,b)=>{
+      const ka = (sortKey==='name' ? (a.name || titleFromSlug(a.slug)) :
+                 sortKey==='slug' ? (a.slug || '') :
+                 (a.created_at || ''));
+      const kb = (sortKey==='name' ? (b.name || titleFromSlug(b.slug)) :
+                 sortKey==='slug' ? (b.slug || '') :
+                 (b.created_at || ''));
+      return (ka>kb?1:ka<kb?-1:0) * (asc?1:-1);
+    });
+    return r;
+  }
 
   async function refresh(){
     setLoading(true); setError('');
@@ -82,7 +137,6 @@ export default function WerberManager(){
       setNewSlug(''); setNewName('');
       await refresh();
       if (newPin.trim()) {
-        // after refresh, find created by slug
         const created = (list || []).find(w => (w.slug === slug));
         const id = created?.id;
         if (id) {
@@ -120,6 +174,7 @@ export default function WerberManager(){
       </div>
       {error && <div className="text-red-600 text-sm whitespace-pre-wrap">{error}</div>}
 
+      {/* Creator */}
       <div className="rounded-2xl border p-4 space-y-2">
         <div className="font-medium">Werber anlegen</div>
         <div className="flex flex-wrap gap-2 items-center">
@@ -134,28 +189,68 @@ export default function WerberManager(){
         <div className="text-xs opacity-70">Slug: a–z, 0–9, „-“; max 40.</div>
       </div>
 
-      <div className="rounded-2xl border p-4">
-        <div className="font-medium mb-2">Werber-Liste</div>
-        {loading ? <div>Lade…</div> : (
-          list.length ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {list.map(w => (
-                <div key={w.id} className="rounded-xl border p-4 space-y-3">
-                  <div>
-                    <div className="font-medium">{w.name || '—'}</div>
-                    <div className="text-xs opacity-70">Slug: {w.slug || '—'}</div>
-                    <div className="text-xs opacity-70">Status: {w.status || '—'}</div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input type="password" className="border rounded px-2 py-1 text-sm" placeholder="Neue PIN"
-                      value={pinById[w.id] || ''} onChange={e=>setPinById(s=>({ ...s, [w.id]: e.target.value }))} />
-                    <button className="px-3 py-1.5 border rounded text-sm" onClick={()=>setPin(w.id)}>PIN speichern</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : <div className="text-sm opacity-70">Noch keine Werber vorhanden.</div>
-        )}
+      {/* Table */}
+      <div className="rounded-2xl border overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr className="text-left">
+              <th className="px-3 py-2 cursor-pointer" onClick={()=>{setSortKey('name'); setAsc(k=>sortKey==='name'?!k:false)}}>Name</th>
+              <th className="px-3 py-2 cursor-pointer" onClick={()=>{setSortKey('slug'); setAsc(k=>sortKey==='slug'?!k:false)}}>Slug</th>
+              <th className="px-3 py-2">Bewerbungslink</th>
+              <th className="px-3 py-2">Werber‑Login</th>
+              <th className="px-3 py-2">PIN</th>
+              <th className="px-3 py-2">Status</th>
+              <th className="px-3 py-2 cursor-pointer" onClick={()=>{setSortKey('created_at'); setAsc(k=>sortKey==='created_at'?!k:false)}}>Erstellt</th>
+              <th className="px-3 py-2">Aktionen</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedRows(list).map((w) => {
+              const nm = w.name || titleFromSlug(w.slug);
+              const ap = applyLink(w.slug);
+              const lg = loginLink(w.slug);
+              return (
+                <tr key={w.id} className="border-t">
+                  <td className="px-3 py-2">{nm}</td>
+                  <td className="px-3 py-2 font-mono">{w.slug || '—'}</td>
+                  <td className="px-3 py-2">
+                    {ap ? (
+                      <div className="flex items-center gap-2">
+                        <a className="underline hover:no-underline" href={ap} target="_blank" rel="noreferrer">Öffnen</a>
+                        <CopyBtn text={ap} />
+                      </div>
+                    ) : '—'}
+                  </td>
+                  <td className="px-3 py-2">
+                    {lg ? (
+                      <div className="flex items-center gap-2">
+                        <a className="underline hover:no-underline" href={lg} target="_blank" rel="noreferrer">Öffnen</a>
+                        <CopyBtn text={lg} />
+                      </div>
+                    ) : '—'}
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className={"text-xs px-2 py-0.5 rounded-full border " + (w.pin_set ? "bg-green-50 border-green-200 text-green-700" : "bg-gray-50")}>
+                      {w.pin_set ? "gesetzt" : "—"}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2">{w.status || '—'}</td>
+                  <td className="px-3 py-2">{w.created_at ? new Date(w.created_at).toLocaleDateString() : '—'}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <input type="password" className="border rounded px-2 py-1 text-xs" placeholder="Neue PIN"
+                        value={pinById[w.id] || ''} onChange={e=>setPinById(s=>({ ...s, [w.id]: e.target.value }))} />
+                      <button className="px-3 py-1.5 border rounded text-xs" onClick={()=>setPin(w.id)}>Speichern</button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+            {!list.length && (
+              <tr><td className="px-3 py-4 text-sm opacity-70" colSpan={8}>Noch keine Werber vorhanden.</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );

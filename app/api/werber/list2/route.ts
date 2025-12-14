@@ -6,6 +6,11 @@ import { createClient } from '@supabase/supabase-js'
 
 export const dynamic = 'force-dynamic'
 
+function titleFromSlug(slug?: string|null){
+  if(!slug) return null
+  return slug.split('-').map(s=>s ? s[0].toUpperCase()+s.slice(1) : s).join(' ')
+}
+
 export async function GET(){
   try {
     const supabase = createRouteHandlerClient({ cookies })
@@ -28,7 +33,7 @@ export async function GET(){
 
     const { data, error } = await admin
       .from('werber')
-      .select('id, slug, name, status, pin_hash')
+      .select('id, slug, status, pin_hash, created_at, name')
       .eq('manager_id', prof.manager_id)
       .order('created_at', { ascending: false })
 
@@ -37,9 +42,10 @@ export async function GET(){
     const items = (data || []).map(w => ({
       id: w.id,
       slug: w.slug,
-      name: (w as any).name ?? null,
+      name: (w as any).name ?? titleFromSlug(w.slug),
       status: w.status ?? null,
       pin_set: !!(w as any).pin_hash,
+      created_at: w.created_at
     }))
 
     return NextResponse.json({ items })
