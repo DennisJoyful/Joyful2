@@ -19,7 +19,7 @@ export type BaseLead = {
 
 export type ExtraLead = {
   id: string
-  source?: string | null   // from column 'source' (type: lead_source)
+  source?: string | null
   notes?: any | null
   utm?: any | null
   extras?: any | null
@@ -48,20 +48,22 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
   const [follow, setFollow] = React.useState<string>('');
   const [sort, setSort] = React.useState<string>('created_at_desc');
   const [loadingExtras, setLoadingExtras] = React.useState(false);
+  const [mounted, setMounted] = React.useState(false); // Für Hydration-Fix
+
+  React.useEffect(() => {
+    setMounted(true); // Mount nach Client-Load
+  }, []);
 
   const refreshExtras = async () => {
     setLoadingExtras(true);
     try {
       const res = await fetch('/api/manager/leads/extra', { cache: 'no-store' });
-      console.log('API Response Status:', res.status); // Debug: Status checken
+      console.log('API Response Status:', res.status); // Debug
       if (res.ok) {
         const extras: ExtraLead[] = await res.json();
-        console.log('Geladene Extras:', extras); // Debug: Sieh, was zurückkommt (inkl. source)
+        console.log('Geladene Extras:', extras); // Debug
         const map = new Map(extras.map((e: ExtraLead) => [e.id, e]));
         setRows(prev => prev.map(b => ({ ...b, ...(map.get(b.id) || {}) })));
-        console.log('Upgedatete Rows:', rows); // Debug: Nach Merge
-      } else {
-        console.error('API Fehler:', res.statusText);
       }
     } catch (error) {
       console.error('Fehler beim Aktualisieren der Quellen:', error);
@@ -113,7 +115,6 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
   }), [normalized, q, status, source, follow]);
 
   const sources = React.useMemo(() => {
-    // fixed enum + any unknowns present
     const set = new Set<string>(SOURCE_ENUM as unknown as string[]);
     normalized.forEach(x => set.add(x.source || 'unknown'));
     return Array.from(set).sort();
@@ -130,6 +131,12 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
     if (sort === 'follow') return arr.sort((a,b)=>cmp(a.follow_up_at || a.follow_up_date || '', b.follow_up_at || b.follow_up_date || ''));
     return arr.sort((a,b)=>cmp(a.created_at || '', b.created_at || '')).reverse();
   }, [filtered, sort]);
+
+  // Client-only Date-Funktion (Hydration-Fix)
+  const formatDate = React.useCallback((dateString: string | null) => {
+    if (!dateString || !mounted) return '—'; // Zeige '—' bis Mount
+    return new Date(dateString).toLocaleString();
+  }, [mounted]);
 
   return (
     <div className="space-y-3">
@@ -192,9 +199,16 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
           </thead>
           <tbody>
             {sorted.map((l) => (
-              <tr key={l.id} className="odd:bg-white even:bg-gray-50"><td className="px-3 py-2">
+              <tr key={l.id} className="odd:bg-white even:bg-gray-50">
+                <td className="px-3 py-2">
                   {l.handle ? <a className="text-blue-600 hover:underline" href={`https://www.tiktok.com/@${l.handle}`} target="_blank" rel="noreferrer">@{l.handle}</a> : '—'}
-                </td><td className="px-3 py-2 whitespace-nowrap"><LeadLiveBadge handle={l.handle ?? ""} refreshMs={15000} /></td><td className="px-3 py-2"><LeadStatusSelect id={l.id} value={l.status ?? 'new'} /></td><td className="px-3 py-2"><Badge>{l.source || '—'}</Badge></td><td className="px-3 py-2">
+                </td>
+                <td className="px-3 py-2 whitespace-nowrap">
+                  <LeadLiveBadge handle={l.handle ?? ""} refreshMs={15000} />
+                </td>
+                <td className="px-3 py-2"><LeadStatusSelect id={l.id} value={l.status ?? 'new'} /></td>
+                <td className="px-3 py-2"><Badge>{l.source || '—'}</Badge></td>
+                <td className="px-3 py-2">
                   <div className="flex items-center gap-2">
                     <input
                       type="date"
@@ -212,7 +226,15 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
                       Speichern
                     </button>
                   </div>
-                </td><td className="px-3 py-2">{l.follow_up_date || '—'}</td><td className="px-3 py-2">{l.follow_up_at ? new Date(l.follow_up_at).toLocaleString() : '—'}</td><td className="px-3 py-2">{l.created_at ? new Date(l.created_at).toLocaleString() : '—'}</td><td className="px-3 py-2">
+                </td>
+                <td className="px-3 py-2">{l.follow_up_date || '—'}</td>
+                <td className="px-3 py-2">
+                  {mounted ? formatDate(l.follow_up_at) : '—'} {/* Hydration-Fix */}
+                </td>
+                <td className="px-3 py-2">
+                  {mounted ? formatDate(l.created_at) : '—'} {/* Hydration-Fix */}
+                </td>
+                <td className="px-3 py-2">
                   <details>
                     <summary className="cursor-pointer text-sm opacity-80">Aufklappen</summary>
                     <div className="mt-2 space-y-2 text-sm max-w-[520px]">
@@ -222,7 +244,9 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
                       {!l.notes && l.utm == null && l.extras == null ? <div className="opacity-50">Keine zusätzlichen Angaben</div> : null}
                     </div>
                   </details>
-                </td><td className="px-3 py-2"><LeadActions id={l.id} compact /></td></tr>
+                </td>
+                <td className="px-3 py-2"><LeadActions id={l.id} compact /></td>
+              </tr>
             ))}
           </tbody>
         </table>

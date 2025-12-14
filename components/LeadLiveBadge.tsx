@@ -21,6 +21,7 @@ export default function LeadLiveBadge({ handle, refreshMs = 20000 }: Props) {
         const res = await fetch(`/api/livecheck?handle=${encodeURIComponent(handle)}`, { cache: 'no-store' });
         if (!res.ok) throw new Error();
         const data = await res.json();
+        console.log('Live API for', handle, ':', data); // Dein Log
         setStatus(data.isLive ? 'Live' : 'Offline');
       } catch {
         setStatus('Offline');
@@ -32,10 +33,10 @@ export default function LeadLiveBadge({ handle, refreshMs = 20000 }: Props) {
     return () => clearInterval(interval);
   }, [handle, refreshMs]);
 
-  // Immer sichtbar + feste Größe gegen Hydration-Probleme
+  // Feste Größe + immer sichtbar
   return (
-    <span className="inline-block min-w-[80px] text-center px-2 py-1 rounded-full text-xs font-bold">
-      {status === 'loading' && <span className="text-yellow-600">Prüfe...</span>}
+    <span className="inline-block w-20 text-center px-2 py-1 rounded-full text-xs font-bold bg-gray-100">
+      {status === 'loading' && 'Prüfe...'}
       {status === 'Live' && <span className="text-white bg-green-600">● LIVE</span>}
       {status === 'Offline' && <span className="text-white bg-gray-600">○ Offline</span>}
     </span>
