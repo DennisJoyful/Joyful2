@@ -1,8 +1,5 @@
-// Render the ORIGINAL leads UI component here so /dashboard/manager/leads looks exactly like before.
-// We assume your project already contains this component from the original /dashboard/manager page.
-// IMPORTANT: We DO NOT change that component at all.
-
-import ManagerLeadsSafeEnhanced from '@/components/manager/ManagerLeadsSafeEnhanced'
+// /dashboard/manager/leads uses the original component from the project
+import ManagerLeadsSafeEnhanced from '@/components/leads/ManagerLeadsSafeEnhanced'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
