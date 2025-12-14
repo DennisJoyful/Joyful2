@@ -1,8 +1,8 @@
 /* Joyful3/components/leads/ManagerLeadsSafeEnhanced.tsx
- * FULL TABLE RESTORE
- * - Restores a rich table with all expected columns
- * - Guarantees Live badge is the **second** column
- * - Never writes 'unknown'; shows '—' only if truly empty
+ * FULL TABLE RESTORE (syntax-fixed)
+ * - All columns restored
+ * - Live badge is the **second** column
+ * - No 'unknown' fallbacks; renders '—' when empty
  * - Extras merge is conservative (no null/undefined overwrite)
  */
 "use client"
@@ -22,7 +22,6 @@ export type BaseLead = {
   follow_up_at?: string | null
   created_at?: string | null
   archived_at?: string | null
-  // any extra fields
   [key: string]: any
 }
 
@@ -64,7 +63,6 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
     setRows((baseRows ?? []).map((r) => ({ ...r, handle: r.handle ?? null, source: r.source ?? null })))
   }, [baseRows])
 
-  // keep your existing extras route behavior, but merge safely
   useEffect(() => {
     let active = true
     async function loadExtras() {
@@ -106,7 +104,7 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
               <td className="px-3 py-2">
                 {l.handle ? (
                   <a
-                    href={f"https://www.tiktok.com/@{l.handle}"}
+                    href={`https://www.tiktok.com/@${l.handle}`}
                     target="_blank"
                     rel="noreferrer"
                     className="text-blue-600 hover:underline"
@@ -156,7 +154,7 @@ export default function ManagerLeadsSafeEnhanced({ baseRows }: Props) {
               </td>
             </tr>
           ))}
-          {rows.length === 0 and (
+          {rows.length === 0 && (
             <tr>
               <td className="px-3 py-6 text-center text-gray-500" colSpan={10}>
                 Keine Leads gefunden.
