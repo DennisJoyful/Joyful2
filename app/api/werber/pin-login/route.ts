@@ -1,30 +1,47 @@
 import { NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { scrypt as _scrypt, timingSafeEqual } from 'crypto'
 import { promisify } from 'util'
 
-// Erzwinge Node.js Runtime, da Edge kein crypto.scrypt hat
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 const scrypt = promisify(_scrypt)
 
-/**
- * Verifiziert Hash im Format "scrypt:<saltHex>:<hashHex>"
- */
-async function verifyHexFormat(stored: string, pin: string): Promise<boolean> {
+type VerifyResult = { ok: boolean; reason?: string }
+
+async function verifyScrypt(stored: string, pin: string): Promise<VerifyResult> {
   try {
-    if (!stored || !stored.startsWith('scrypt:')) return false
-    const [, saltHex, hashHex] = stored.split(':')
-    if (!saltHex || !hashHex) return false
-    const salt = Buffer.from(saltHex, 'hex')
-    const expected = Buffer.from(hashHex, 'hex')
-    const derived = (await scrypt(pin, salt, expected.length)) as Buffer
-    if (derived.length !== expected.length) return false
-    return timingSafeEqual(derived, expected)
-  } catch {
-    return false
+    if (!stored || !stored.startsWith('scrypt:')) {
+      return { ok: false, reason: 'unsupported-prefix' }
+    }
+    const parts = stored.split(':')
+    // Formats:
+    // 1) scrypt:<saltHex>:<hashHex>
+    // 2) scrypt:<N>:<r>:<p>:<saltHex>:<hashHex>
+    if (parts.length === 3) {
+      const [, saltHex, hashHex] = parts
+      if (!saltHex || !hashHex) return { ok: false, reason: 'missing-parts' }
+      const salt = Buffer.from(saltHex, 'hex')
+      const expected = Buffer.from(hashHex, 'hex')
+      const key = (await scrypt(pin, salt, expected.length)) as Buffer
+      if (key.length !== expected.length) return { ok: false, reason: 'length-mismatch' }
+      return { ok: timingSafeEqual(key, expected) }
+    } else if (parts.length >= 6) {
+      const [, nStr, rStr, pStr, saltHex, hashHex] = parts
+      const N = Number(nStr), r = Number(rStr), p = Number(pStr)
+      if (!N || !r || !p) return { ok: false, reason: 'invalid-costs' }
+      const salt = Buffer.from(saltHex, 'hex')
+      const expected = Buffer.from(hashHex, 'hex')
+      const key = (await scrypt(pin, salt, expected.length, { N, r, p })) as Buffer
+      if (key.length !== expected.length) return { ok: false, reason: 'length-mismatch' }
+      return { ok: timingSafeEqual(key, expected) }
+    } else {
+      return { ok: false, reason: 'unknown-format' }
+    }
+  } catch (e:any) {
+    return { ok: false, reason: 'exception:' + (e?.message || String(e)) }
   }
 }
 
@@ -49,8 +66,15 @@ export async function POST(req: Request) {
   if (!row.pin_hash) return NextResponse.json({ error: 'Kein PIN gesetzt' }, { status: 400 })
   if (row.status && row.status !== 'active') return NextResponse.json({ error: 'Werber inaktiv' }, { status: 403 })
 
-  const ok = await verifyHexFormat(row.pin_hash as string, pin)
-  if (!ok) return NextResponse.json({ error: 'Login fehlgeschlagen. Bitte Eingaben prüfen.' }, { status: 401 })
+  const vr = await verifyScrypt(row.pin_hash as string, pin)
+  if (!vr.ok) {
+    // Optional Debug-Ausgabe: nur wenn Header und ENV gesetzt
+    const dbgHeader = headers().get('x-admin-debug')
+    if (dbgHeader && process.env.ALLOW_PIN_DEBUG === '1') {
+      return NextResponse.json({ error: 'verify-failed', reason: vr.reason, format: String(row.pin_hash).split(':').slice(0,2).join(':') }, { status: 401 })
+    }
+    return NextResponse.json({ error: 'Login fehlgeschlagen. Bitte Eingaben prüfen.' }, { status: 401 })
+  }
 
   const isProd = process.env.NODE_ENV === 'production'
   cookies().set('werber_id', row.id as string, {
