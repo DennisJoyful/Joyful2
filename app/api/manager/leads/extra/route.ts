@@ -1,34 +1,37 @@
-// app/api/manager/leads/extra/route.ts
-import { createClient } from '@supabase/supabase-js';
-import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers'
+import { NextResponse } from 'next/server'
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
-export const dynamic = 'force-dynamic';
+export const dynamic = 'force-dynamic'
+
+async function getCurrentManagerId(): Promise<string | null> {
+  const supa = createRouteHandlerClient({ cookies })
+  const { data: { user } } = await supa.auth.getUser()
+  const uid = user?.id
+  if (!uid) return null
+
+  // 1) profiles.manager_id bevorzugt
+  const { data: prof } = await supabaseAdmin
+    .from('profiles').select('manager_id')
+    .eq('user_id', uid).maybeSingle()
+  if (prof?.manager_id) return String(prof.manager_id)
+
+  // 2) Fallback: managers.id via user_id
+  const { data: mgr } = await supabaseAdmin
+    .from('managers').select('id')
+    .eq('user_id', uid).maybeSingle()
+  return (mgr?.id as string) ?? null
+}
 
 export async function GET() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const managerId = await getCurrentManagerId()
+  if (!managerId) return NextResponse.json([])
 
-  if (!supabaseUrl || !serviceKey) {
-    console.error('Fehlende Supabase Env-Vars');
-    return NextResponse.json([]);
-  }
-
-  const supabase = createClient(supabaseUrl, serviceKey);
-
-  const managerId = '022c6670-84ed-46bb-84f1-b61286ea93f6';
-
-  // NUR Spalten, die wirklich existieren!
-  const { data, error } = await supabase
+  const { data } = await supabaseAdmin
     .from('leads')
-    .select('id, source') // notes ist null, also weglassen – reicht für Quelle
-    .eq('manager_id', managerId);
+    .select('id, source')
+    .eq('manager_id', managerId)
 
-  if (error) {
-    console.error('Supabase Error:', error);
-    return NextResponse.json([]);
-  }
-
-  console.log('Extras geladen (id + source):', data);
-
-  return NextResponse.json(data || []);
+  return NextResponse.json(data ?? [])
 }
