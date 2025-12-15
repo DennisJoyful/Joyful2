@@ -18,20 +18,36 @@ function scryptAsync(password: string, salt: Buffer, keylen: number, opts?: any)
 
 type VerifyResult = { ok: boolean; reason?: string }
 
+// Kandidaten für Kosten, wenn im Hash KEINE Kosten abgelegt sind.
+const COST_PRESETS = [
+  { N: 16384, r: 8, p: 1 },
+  { N: 32768, r: 8, p: 1 },
+  { N: 65536, r: 8, p: 1 },
+  { N: 16384, r: 8, p: 2 },
+]
+
 async function verifyScrypt(stored: string, pin: string): Promise<VerifyResult> {
   try {
     if (!stored || !stored.startsWith('scrypt:')) {
       return { ok: false, reason: 'unsupported-prefix' }
     }
     const parts = stored.split(':')
+    // 1) scrypt:<saltHex>:<hashHex>
+    // 2) scrypt:<N>:<r>:<p>:<saltHex>:<hashHex>
     if (parts.length === 3) {
       const [, saltHex, hashHex] = parts
       if (!saltHex || !hashHex) return { ok: false, reason: 'missing-parts' }
       const salt = Buffer.from(saltHex, 'hex')
       const expected = Buffer.from(hashHex, 'hex')
-      const key = await scryptAsync(pin, salt, expected.length)
-      if (key.length !== expected.length) return { ok: false, reason: 'length-mismatch' }
-      return { ok: timingSafeEqual(key, expected) }
+
+      // Versuche mehrere Presets
+      for (const preset of COST_PRESETS) {
+        const key = await scryptAsync(pin, salt, expected.length, preset)
+        if (key.length === expected.length && timingSafeEqual(key, expected)) {
+          return { ok: true }
+        }
+      }
+      return { ok: false, reason: 'no-preset-matched' }
     } else if (parts.length >= 6) {
       const [, nStr, rStr, pStr, saltHex, hashHex] = parts
       const N = Number(nStr), r = Number(rStr), p = Number(pStr)
