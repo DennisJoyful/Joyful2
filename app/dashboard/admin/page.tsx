@@ -1,85 +1,49 @@
-// app/dashboard/admin/page.tsx
-'use client';
-import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+'use client'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
-type SwsRule = {
-  id: string;
-  code: string;
-  description: string | null;
-  active: boolean;
-  points: number;
-};
-
-export default function Page(){ 
-  const [rules, setRules] = useState<SwsRule[]>([]);
-  const [slug, setSlug] = useState('');
-  const [points, setPoints] = useState<number>(0);
-  const [recalcState, setRecalcState] = useState<string>('');
-
-  useEffect(()=>{
-    supabase.from('sws_rules').select('*').then(({data})=>setRules((data as SwsRule[])||[]));
-  },[]);
-
-  async function toggle(id: string, val: boolean){
-    await supabase.from('sws_rules').update({active:val}).eq('id',id);
-    const { data } = await supabase.from('sws_rules').select('*');
-    setRules((data as SwsRule[])||[]);
-  }
-
-  async function book(){
-    const { data: w } = await supabase.from('werber').select('id').eq('slug', slug).single();
-    if(!w){ alert('Werber nicht gefunden'); return; }
-    await supabase.from('ledger_entries').insert({ werber_id: (w as any).id, type: points>=0?'manual_credit':'manual_debit', amount_points: Math.abs(points), memo: 'Admin Buchung' });
-    alert('OK');
-  }
-
-  async function recalc(){
-    setRecalcState('rechne…');
-    try{
-      const res = await fetch('/api/sws/recalc', { method:'POST' });
-      const j = await res.json();
-      setRecalcState(`OK: ${j.created} Events`);
-    }catch(e:any){
-      setRecalcState('Fehler beim Recalc');
-    }
-  }
+export default function AdminMenu() {
+  const cards = [
+    {
+      href: '/dashboard/admin/imports',
+      title: 'Monatsdaten importieren',
+      desc: 'TikTok-Excel (Monatsbasis) hochladen. Import triggert automatisch die SWS-Berechnung.'
+    },
+    {
+      href: '/dashboard/admin/referrals',
+      title: 'Werber ↔ Bewerber nachtragen',
+      desc: 'Bestehende Beziehungen anlegen oder per Override korrigieren (First-Touch beachten).'
+    },
+    {
+      href: '/dashboard/admin/points',
+      title: 'Punkte manuell anpassen',
+      desc: 'Punkte gutschreiben oder abziehen – mit Grund. Optional mit Bewerber- und Monatsbezug.'
+    },
+    {
+      href: '/dashboard/admin/recalc',
+      title: 'SWS neu berechnen',
+      desc: 'Manueller Recalc – nur nutzen, wenn nötig. (Import erledigt das automatisch.)'
+    },
+  ]
 
   return (
-    <main className="grid" style={{ gap:'1rem' }}>
-      <div className="card">
-        <div className="card-body">
-          <h2 style={{ fontWeight: 600 }}>SWS-Regeln</h2>
-          <button className="btn" onClick={recalc} style={{ margin:'0.5rem 0' }}>
-            SWS neu berechnen
-          </button>
-          {recalcState && <div style={{ fontSize:12, opacity:.8 }}>{recalcState}</div>}
-          <ul>
-            {rules.map(r=> (
-              <li key={r.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'.5rem 0', borderBottom:'1px solid #eee' }}>
-                <div>
-                  <div style={{ fontWeight: 600 }}>{r.code}</div>
-                  <div style={{ fontSize:12, opacity:.7 }}>{r.description}</div>
-                </div>
-                <label style={{ display:'flex', gap:'.5rem', alignItems:'center' }}>
-                  <input type="checkbox" checked={!!r.active} onChange={e=>toggle(r.id, e.target.checked)} /> aktiv
-                </label>
-              </li>
-            ))}
-          </ul>
-        </div>
+    <div className="mx-auto max-w-5xl p-6">
+      <h1 className="text-2xl font-semibold mb-2">Admin – SWS</h1>
+      <p className="text-sm text-gray-500 mb-6">
+        Wähle eine Aktion. Diese Seite ändert keine bestehenden Daten automatisch.
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {cards.map((c) => (
+          <Link
+            key={c.href}
+            href={c.href}
+            className="rounded-2xl border p-4 hover:shadow-md transition"
+          >
+            <div className="text-lg font-medium">{c.title}</div>
+            <div className="text-sm text-gray-600 mt-1">{c.desc}</div>
+          </Link>
+        ))}
       </div>
-
-      <div className="card">
-        <div className="card-body">
-          <h2 style={{ fontWeight: 600 }}>Manuelle Buchung</h2>
-          <div style={{ display:'flex', gap:'.5rem' }}>
-            <input className="input" placeholder="werber slug" value={slug} onChange={e=>setSlug(e.target.value)} />
-            <input className="input" type="number" value={points} onChange={e=>setPoints(parseInt(e.target.value||'0', 10))} />
-            <button className="btn btn-primary" onClick={book}>Buchen</button>
-          </div>
-        </div>
-      </div>
-    </main>
-  );
+    </div>
+  )
 }
