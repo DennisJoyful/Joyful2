@@ -1,26 +1,56 @@
 // app/api/manager/leads/extra/route.ts
-import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const cookieStore = cookies();
 
-  if (!supabaseUrl || !serviceKey) {
-    console.error('Fehlende Supabase Env-Vars');
-    return NextResponse.json([]);
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options);
+          });
+        },
+      },
+    }
+  );
+
+  // Hole den aktuell eingeloggten User
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    console.error('Kein eingeloggter User oder Auth-Fehler:', userError);
+    return NextResponse.json([], { status: 401 });
   }
 
-  const supabase = createClient(supabaseUrl, serviceKey);
+  // manager_id aus user_metadata holen (Standard bei Supabase, wenn du sie beim Signup setzt)
+  // Falls du die manager_id in einer separaten Tabelle speicherst, sag Bescheid – dann passen wir es an
+  let managerId = user.user_metadata?.manager_id;
 
-  const managerId = '022c6670-84ed-46bb-84f1-b61286ea93f6';
+  // Fallback: Falls nicht in metadata, nimm user.id (für Testzwecke oder wenn 1:1)
+  if (!managerId) {
+    managerId = user.id;
+    console.log('Fallback: manager_id = user.id verwendet:', managerId);
+  }
 
-  // NUR Spalten, die wirklich existieren!
+  console.log('Manager ID des eingeloggten Users:', managerId);
+
   const { data, error } = await supabase
     .from('leads')
-    .select('id, source') // notes ist null, also weglassen – reicht für Quelle
+    .select('id, source')
     .eq('manager_id', managerId);
 
   if (error) {
@@ -28,7 +58,7 @@ export async function GET() {
     return NextResponse.json([]);
   }
 
-  console.log('Extras geladen (id + source):', data);
+  console.log('Geladene Leads für diesen Manager:', data);
 
   return NextResponse.json(data || []);
 }
