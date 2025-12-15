@@ -14,7 +14,7 @@ export async function GET() {
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    serviceKey // Bypass RLS
+    serviceKey // Bypass RLS – liest alles
   );
 
   const managerId = '022c6670-84ed-46bb-84f1-b61286ea93f6';
@@ -29,7 +29,7 @@ export async function GET() {
     return NextResponse.json([]);
   }
 
-  console.log('Extras mit service_key geladen:', data); // In Vercel Logs sichtbar
+  console.log('Extras mit service_role_key:', data); // In Vercel Logs sichtbar
 
   return NextResponse.json(data || []);
 }
