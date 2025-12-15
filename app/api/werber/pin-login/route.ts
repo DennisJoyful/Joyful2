@@ -1,13 +1,24 @@
 import { NextResponse } from 'next/server'
 import { cookies, headers } from 'next/headers'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
-import { scrypt as _scrypt, timingSafeEqual } from 'crypto'
-import { promisify } from 'util'
+import { scrypt as scryptCb, timingSafeEqual } from 'crypto'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const scrypt = promisify(_scrypt)
+function scryptAsync(password: string, salt: Buffer, keylen: number, opts?: any): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    try {
+      // @ts-ignore - Node types vary across versions; opts is optional
+      scryptCb(password, salt, keylen, opts || undefined, (err: any, derivedKey: Buffer) => {
+        if (err) return reject(err)
+        resolve(derivedKey as Buffer)
+      })
+    } catch (e) {
+      reject(e)
+    }
+  })
+}
 
 type VerifyResult = { ok: boolean; reason?: string }
 
@@ -17,7 +28,6 @@ async function verifyScrypt(stored: string, pin: string): Promise<VerifyResult> 
       return { ok: false, reason: 'unsupported-prefix' }
     }
     const parts = stored.split(':')
-    // Formats:
     // 1) scrypt:<saltHex>:<hashHex>
     // 2) scrypt:<N>:<r>:<p>:<saltHex>:<hashHex>
     if (parts.length === 3) {
@@ -25,7 +35,7 @@ async function verifyScrypt(stored: string, pin: string): Promise<VerifyResult> 
       if (!saltHex || !hashHex) return { ok: false, reason: 'missing-parts' }
       const salt = Buffer.from(saltHex, 'hex')
       const expected = Buffer.from(hashHex, 'hex')
-      const key = (await scrypt(pin, salt, expected.length)) as Buffer
+      const key = await scryptAsync(pin, salt, expected.length)
       if (key.length !== expected.length) return { ok: false, reason: 'length-mismatch' }
       return { ok: timingSafeEqual(key, expected) }
     } else if (parts.length >= 6) {
@@ -34,7 +44,7 @@ async function verifyScrypt(stored: string, pin: string): Promise<VerifyResult> 
       if (!N || !r || !p) return { ok: false, reason: 'invalid-costs' }
       const salt = Buffer.from(saltHex, 'hex')
       const expected = Buffer.from(hashHex, 'hex')
-      const key = (await scrypt(pin, salt, expected.length, { N, r, p })) as Buffer
+      const key = await scryptAsync(pin, salt, expected.length, { N, r, p })
       if (key.length !== expected.length) return { ok: false, reason: 'length-mismatch' }
       return { ok: timingSafeEqual(key, expected) }
     } else {
@@ -68,7 +78,6 @@ export async function POST(req: Request) {
 
   const vr = await verifyScrypt(row.pin_hash as string, pin)
   if (!vr.ok) {
-    // Optional Debug-Ausgabe: nur wenn Header und ENV gesetzt
     const dbgHeader = headers().get('x-admin-debug')
     if (dbgHeader && process.env.ALLOW_PIN_DEBUG === '1') {
       return NextResponse.json({ error: 'verify-failed', reason: vr.reason, format: String(row.pin_hash).split(':').slice(0,2).join(':') }, { status: 401 })
