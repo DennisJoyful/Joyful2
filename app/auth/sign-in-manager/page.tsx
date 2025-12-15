@@ -18,23 +18,8 @@ export default function ManagerSignInPage(): JSX.Element {
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) throw error
-
-      const { data: profile, error: profErr } = await supabase
-        .from('profiles')
-        .select('role')
-        .limit(1)
-        .single()
-
-      if (profErr) {
-        router.push('/dashboard')
-        return
-      }
-
-      const role = String(profile?.role ?? '')
-      if (role === 'admin') router.push('/dashboard/admin')
-      else if (role === 'manager') router.push('/dashboard/manager')
-      else if (role === 'werber') router.push('/dashboard/werber')
-      else router.push('/dashboard')
+      // Einheitliches Ziel: /dashboard (vermeidet 404 auf Subrouten)
+      router.push('/dashboard')
     } catch (e: any) {
       setError(e.message || 'Login fehlgeschlagen')
     } finally {
