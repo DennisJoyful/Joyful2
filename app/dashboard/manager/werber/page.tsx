@@ -52,7 +52,8 @@ export default function ManagerWerberPage() {
     finally { setCreating(false) }
   }
 
-  async function setPin(e: React.FormEvent) {
+  // renamed to avoid clash with useState setter setPin
+  async function savePin(e: React.FormEvent) {
     e.preventDefault()
     setPinMsg(null); setPinErr(null)
     if (!pinFor) { setPinErr('Bitte zuerst einen Werber in der Liste auswählen.'); return }
@@ -116,10 +117,10 @@ export default function ManagerWerberPage() {
                 <button
                   key={w.id}
                   onClick={()=>setPinFor(w.id)}
-                  className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${pinFor===w.id ? 'bg-gray-50' : ''}`}
+                  className={\`w-full text-left px-3 py-2 hover:bg-gray-50 \${pinFor===w.id ? 'bg-gray-50' : ''}\`}
                 >
                   <div className="flex items-center justify-between">
-                    <div className="text-sm font-medium">{w.slug}{w.name ? ` – ${w.name}` : ''}</div>
+                    <div className="text-sm font-medium">{w.slug}{w.name ? \` – \${w.name}\` : ''}</div>
                     <div className="text-xs text-gray-500">{new Date(w.created_at).toLocaleString()}</div>
                   </div>
                   <div className="text-xs text-gray-600">
@@ -137,7 +138,7 @@ export default function ManagerWerberPage() {
 
       <section className="rounded-2xl border p-4">
         <h2 className="text-lg font-medium mb-3">PIN setzen / ändern</h2>
-        <form onSubmit={setPin} className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <form onSubmit={savePin} className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="md:col-span-3 text-sm text-gray-600">
             Ausgewählter Werber-ID: <span className="font-mono">{pinFor || '–'}</span>
           </div>
