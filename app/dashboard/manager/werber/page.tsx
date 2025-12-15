@@ -1,9 +1,10 @@
 'use client'
+import * as React from 'react'
 import { useEffect, useState } from 'react'
 
 type Werber = { id: string; slug: string; name: string | null; status: string | null; created_at: string; pin_set: boolean }
 
-export default function ManagerWerberPage() {
+export default function ManagerWerberPage(): JSX.Element {
   const [list, setList] = useState<Werber[]>([])
   const [loadingList, setLoadingList] = useState(true)
   const [errList, setErrList] = useState<string | null>(null)
@@ -20,20 +21,20 @@ export default function ManagerWerberPage() {
   const [pinMsg, setPinMsg] = useState<string | null>(null)
   const [pinErr, setPinErr] = useState<string | null>(null)
 
-  async function refresh() {
+  async function refresh(): Promise<void> {
     setLoadingList(true); setErrList(null)
     try {
       const res = await fetch('/api/manager/werber/list')
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error || 'Fehler beim Laden')
       setList(json.items || [])
-    } catch (e:any) { setErrList(e.message || String(e)) }
+    } catch (e: any) { setErrList(e.message || String(e)) }
     finally { setLoadingList(false) }
   }
 
   useEffect(() => { refresh() }, [])
 
-  async function createWerber(e: React.FormEvent) {
+  async function createWerber(e: React.FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault()
     setCreating(true); setCreateMsg(null); setCreateErr(null)
     try {
@@ -48,12 +49,11 @@ export default function ManagerWerberPage() {
       setCreateMsg(json.message || `Werber gespeichert. Formular: /sws/${finalSlug}`)
       setSlug(''); setName('')
       await refresh()
-    } catch (e:any) { setCreateErr(e.message || String(e)) }
+    } catch (e: any) { setCreateErr(e.message || String(e)) }
     finally { setCreating(false) }
   }
 
-  // renamed to avoid clash with useState setter setPin
-  async function savePin(e: React.FormEvent) {
+  async function savePin(e: React.FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault()
     setPinMsg(null); setPinErr(null)
     if (!pinFor) { setPinErr('Bitte zuerst einen Werber in der Liste auswählen.'); return }
@@ -72,7 +72,7 @@ export default function ManagerWerberPage() {
       setPinMsg('PIN gespeichert.')
       setPin(''); setPin2('')
       await refresh()
-    } catch (e:any) { setPinErr(e.message || String(e)) }
+    } catch (e: any) { setPinErr(e.message || String(e)) }
   }
 
   return (
@@ -117,10 +117,10 @@ export default function ManagerWerberPage() {
                 <button
                   key={w.id}
                   onClick={()=>setPinFor(w.id)}
-                  className={\`w-full text-left px-3 py-2 hover:bg-gray-50 \${pinFor===w.id ? 'bg-gray-50' : ''}\`}
+                  className={`w-full text-left px-3 py-2 hover:bg-gray-50 ${pinFor===w.id ? 'bg-gray-50' : ''}`}
                 >
                   <div className="flex items-center justify-between">
-                    <div className="text-sm font-medium">{w.slug}{w.name ? \` – \${w.name}\` : ''}</div>
+                    <div className="text-sm font-medium">{w.slug}{w.name ? ` – ${w.name}` : ''}</div>
                     <div className="text-xs text-gray-500">{new Date(w.created_at).toLocaleString()}</div>
                   </div>
                   <div className="text-xs text-gray-600">
