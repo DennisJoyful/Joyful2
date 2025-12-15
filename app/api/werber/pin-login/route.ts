@@ -4,16 +4,18 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { scrypt as _scrypt, timingSafeEqual } from 'crypto'
 import { promisify } from 'util'
 
-// WICHTIG: Node-Runtime, da Edge kein crypto.scrypt hat!
+// Erzwinge Node.js Runtime, da Edge kein crypto.scrypt hat
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 const scrypt = promisify(_scrypt)
 
+/**
+ * Verifiziert Hash im Format "scrypt:<saltHex>:<hashHex>"
+ */
 async function verifyHexFormat(stored: string, pin: string): Promise<boolean> {
-  // Erwartet "scrypt:<saltHex>:<hashHex>"
   try {
-    if (!stored.startsWith('scrypt:')) return false
+    if (!stored || !stored.startsWith('scrypt:')) return false
     const [, saltHex, hashHex] = stored.split(':')
     if (!saltHex || !hashHex) return false
     const salt = Buffer.from(saltHex, 'hex')
@@ -24,24 +26,6 @@ async function verifyHexFormat(stored: string, pin: string): Promise<boolean> {
   } catch {
     return false
   }
-}
-
-async function verifyOsloFormat(stored: string, pin: string): Promise<boolean> {
-  // Fallback: falls alter Hash aus `oslo/password` vorliegt
-  try {
-    const { Scrypt } = await import('oslo/password')
-    const s = new Scrypt()
-    return await s.verify(stored, pin)
-  } catch {
-    return false
-  }
-}
-
-async function verifyAny(stored: string, pin: string): Promise<boolean> {
-  // Erst unser Hex-Format testen, dann oslo
-  if (await verifyHexFormat(stored, pin)) return true
-  if (await verifyOsloFormat(stored, pin)) return true
-  return false
 }
 
 export async function POST(req: Request) {
@@ -65,7 +49,7 @@ export async function POST(req: Request) {
   if (!row.pin_hash) return NextResponse.json({ error: 'Kein PIN gesetzt' }, { status: 400 })
   if (row.status && row.status !== 'active') return NextResponse.json({ error: 'Werber inaktiv' }, { status: 403 })
 
-  const ok = await verifyAny(row.pin_hash as string, pin)
+  const ok = await verifyHexFormat(row.pin_hash as string, pin)
   if (!ok) return NextResponse.json({ error: 'Login fehlgeschlagen. Bitte Eingaben prüfen.' }, { status: 401 })
 
   const isProd = process.env.NODE_ENV === 'production'
