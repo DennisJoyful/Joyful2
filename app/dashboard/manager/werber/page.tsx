@@ -65,7 +65,8 @@ export default function ManagerWerberPage(): JSX.Element {
       const res = await fetch('/api/werber/update-pin', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ werber_id: pinFor, pin })
+        // Backend erwartet { id, pin } — Payload angepasst
+        body: JSON.stringify({ id: pinFor, pin })
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error || 'Fehler beim Setzen der PIN')
