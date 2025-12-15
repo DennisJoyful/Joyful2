@@ -5,27 +5,31 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!supabaseUrl || !supabaseKey) {
-    console.error('Supabase Env-Vars fehlen!');
+  if (!serviceKey) {
+    console.error('SUPABASE_SERVICE_ROLE_KEY fehlt!');
     return NextResponse.json([]);
   }
 
-  const supabase = createClient(supabaseUrl, supabaseKey);
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    serviceKey // Bypass RLS
+  );
 
-  // Temporär ALLE Leads holen (ohne Filter) – um zu testen, ob Daten kommen
+  const managerId = '022c6670-84ed-46bb-84f1-b61286ea93f6';
+
   const { data, error } = await supabase
     .from('leads')
-    .select('id, source, notes, utm, extras');
+    .select('id, source, notes, utm, extras')
+    .eq('manager_id', managerId);
 
   if (error) {
     console.error('Supabase Error:', error);
     return NextResponse.json([]);
   }
 
-  console.log('Geladene Extras (alle):', data); // Debug
+  console.log('Extras mit service_key geladen:', data); // In Vercel Logs sichtbar
 
   return NextResponse.json(data || []);
 }
