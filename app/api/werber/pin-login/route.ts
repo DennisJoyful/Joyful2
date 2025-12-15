@@ -8,15 +8,11 @@ export const dynamic = 'force-dynamic'
 
 function scryptAsync(password: string, salt: Buffer, keylen: number, opts?: any): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    try {
-      // @ts-ignore - Node types vary across versions; opts is optional
-      scryptCb(password, salt, keylen, opts || undefined, (err: any, derivedKey: Buffer) => {
-        if (err) return reject(err)
-        resolve(derivedKey as Buffer)
-      })
-    } catch (e) {
-      reject(e)
-    }
+    // @ts-ignore - Node types vary across versions; opts is optional
+    scryptCb(password, salt, keylen, opts || undefined, (err: any, derivedKey: Buffer) => {
+      if (err) return reject(err)
+      resolve(derivedKey as Buffer)
+    })
   })
 }
 
@@ -28,8 +24,6 @@ async function verifyScrypt(stored: string, pin: string): Promise<VerifyResult> 
       return { ok: false, reason: 'unsupported-prefix' }
     }
     const parts = stored.split(':')
-    // 1) scrypt:<saltHex>:<hashHex>
-    // 2) scrypt:<N>:<r>:<p>:<saltHex>:<hashHex>
     if (parts.length === 3) {
       const [, saltHex, hashHex] = parts
       if (!saltHex || !hashHex) return { ok: false, reason: 'missing-parts' }
@@ -56,6 +50,8 @@ async function verifyScrypt(stored: string, pin: string): Promise<VerifyResult> 
 }
 
 export async function POST(req: Request) {
+  const url = new URL(req.url)
+  const wantDebug = url.searchParams.get('debug') === '1' || headers().get('x-admin-debug') === '1'
   const body = await req.json().catch(() => null) as any
   if (!body) return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
 
@@ -78,8 +74,7 @@ export async function POST(req: Request) {
 
   const vr = await verifyScrypt(row.pin_hash as string, pin)
   if (!vr.ok) {
-    const dbgHeader = headers().get('x-admin-debug')
-    if (dbgHeader && process.env.ALLOW_PIN_DEBUG === '1') {
+    if (wantDebug && process.env.ALLOW_PIN_DEBUG === '1') {
       return NextResponse.json({ error: 'verify-failed', reason: vr.reason, format: String(row.pin_hash).split(':').slice(0,2).join(':') }, { status: 401 })
     }
     return NextResponse.json({ error: 'Login fehlgeschlagen. Bitte Eingaben prüfen.' }, { status: 401 })
