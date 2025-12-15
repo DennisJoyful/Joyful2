@@ -4,17 +4,16 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { scrypt as _scrypt, timingSafeEqual } from 'crypto'
 import { promisify } from 'util'
 
-const scrypt = promisify(_scrypt)
-
+// WICHTIG: Node-Runtime, da Edge kein crypto.scrypt hat!
+export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/**
- * Verifiziert den in /api/werber/update-pin gesetzten Hash.
- * Hashformat: "scrypt:<saltHex>:<hashHex>"
- */
-async function verifyHash(stored: string, pin: string): Promise<boolean> {
+const scrypt = promisify(_scrypt)
+
+async function verifyHexFormat(stored: string, pin: string): Promise<boolean> {
+  // Erwartet "scrypt:<saltHex>:<hashHex>"
   try {
-    if (!stored || !stored.startsWith('scrypt:')) return false
+    if (!stored.startsWith('scrypt:')) return false
     const [, saltHex, hashHex] = stored.split(':')
     if (!saltHex || !hashHex) return false
     const salt = Buffer.from(saltHex, 'hex')
@@ -25,6 +24,24 @@ async function verifyHash(stored: string, pin: string): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+async function verifyOsloFormat(stored: string, pin: string): Promise<boolean> {
+  // Fallback: falls alter Hash aus `oslo/password` vorliegt
+  try {
+    const { Scrypt } = await import('oslo/password')
+    const s = new Scrypt()
+    return await s.verify(stored, pin)
+  } catch {
+    return false
+  }
+}
+
+async function verifyAny(stored: string, pin: string): Promise<boolean> {
+  // Erst unser Hex-Format testen, dann oslo
+  if (await verifyHexFormat(stored, pin)) return true
+  if (await verifyOsloFormat(stored, pin)) return true
+  return false
 }
 
 export async function POST(req: Request) {
@@ -39,14 +56,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'slug oder id und pin erforderlich' }, { status: 400 })
   }
 
-  const q = supabaseAdmin
-    .from('werber')
-    .select('id, slug, pin_hash, status')
-    .limit(1)
-
-  const res = id
-    ? await q.eq('id', id)
-    : await q.eq('slug', slug!)
+  const q = supabaseAdmin.from('werber').select('id, slug, pin_hash, status').limit(1)
+  const res = id ? await q.eq('id', id) : await q.eq('slug', slug!)
 
   if (res.error) return NextResponse.json({ error: 'Fehler beim Lesen', details: res.error.message }, { status: 500 })
   const row = (res.data ?? [])[0]
@@ -54,16 +65,16 @@ export async function POST(req: Request) {
   if (!row.pin_hash) return NextResponse.json({ error: 'Kein PIN gesetzt' }, { status: 400 })
   if (row.status && row.status !== 'active') return NextResponse.json({ error: 'Werber inaktiv' }, { status: 403 })
 
-  const ok = await verifyHash(row.pin_hash as string, pin)
+  const ok = await verifyAny(row.pin_hash as string, pin)
   if (!ok) return NextResponse.json({ error: 'Login fehlgeschlagen. Bitte Eingaben prüfen.' }, { status: 401 })
 
-  // Set httpOnly cookie to mark werber session
+  const isProd = process.env.NODE_ENV === 'production'
   cookies().set('werber_id', row.id as string, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: true,
+    secure: isProd,
     path: '/',
-    maxAge: 60 * 60 * 24 * 90, // 90 Tage
+    maxAge: 60 * 60 * 24 * 90,
   })
 
   return NextResponse.json({ status: 'ok', werber_id: row.id, slug: row.slug })
